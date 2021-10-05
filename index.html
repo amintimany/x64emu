@@ -7,6 +7,7 @@
     <title>x64emu</title>
     <link rel="stylesheet" href="bootstrap.min.css" />
     <script type="text/javascript" src="x64emu.js"></script>
+    <script src="../../../../ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
   </head>
   <body class="bg-light bg-opacity-10">
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
@@ -17,7 +18,7 @@
     <div class="container-fluid">
         <div class="mb-3 mt-3 col-10 mx-auto">
             <label class="form-label">Assembly source code:</label>
-            <textarea class="form-control" rows="30" id="x64emu_the_code"></textarea>
+            <pre style="height:70vh;" id="x64emu_the_code"></pre>
             <div >
                 <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
                 <div class="form-check form-switch display-inline mx-2">
@@ -28,5 +29,12 @@
         </div>
         <div class="mb-3 mt-3 col-10 mx-auto" id="x64emu_load_result"></div>
     </div>
+
+    <script>
+        var editor = ace.edit("x64emu_the_code");
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/assembly_x86");
+        document.getElementById("x64emu_the_code").style.fontSize = (Math.round(screen.width/130)).toString().concat("px");
+    </script>
   </body>
 </html>
