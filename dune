@@ -1,0 +1,15 @@
+(executable (name x64emu)
+  (modes byte js)
+  
+  (libraries x64emumain)
+  (preprocess
+  (pps js_of_ocaml-ppx)))
+
+(install 
+    (section bin)
+    
+    (files (x64emu.exe as x64emu)
+           (x64emu.bc.js as x64emu.js)
+           (bootstrap.min.css as bootstrap.min.css)
+           (index.html as index.html)
+           ))

@@ -1,0 +1,9 @@
+(library
+ (name x64emumain)
+ (libraries stdio js_of_ocaml))
+
+(ocamllex lexer)
+
+(menhir
+  (modules parser)
+  (flags --explain --dump))

@@ -1,0 +1,9 @@
+opam-version: "2.0"
+maintainer: "N/A"
+synopsis: "A simple x64 emulator"
+description: "A simple x64 emulator" 
+authors: "AU CS"
+homepage: "https://cs.au.dk"
+bug-reports: "N/A"
+depends: ["dune" "stdio" "menhir" "alcotest" "yojson" "merlin" "fmt" "utop" "js_of_ocaml" "js_of_ocaml-ppx"]
+build: ["dune" "build" "-p" name "-j" jobs]
