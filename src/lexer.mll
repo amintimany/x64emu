@@ -15,11 +15,19 @@ rule token = parse
 | eof              { EOF }
 | '\n'             { Lexing.new_line lexbuf; NEWLINE }
 | [' ' '\t']       { token lexbuf }
-| digit+ as i      { match Int64.of_string_opt i with Some j -> INT j | None -> raise (Error ("invalid number: \"" ^ i ^ "\".", lexbuf.lex_curr_p)) }
-| "9223372036854775808"
-                   { INT64MIN }
+| digit+ as i      { if i = "9223372036854775808" then
+                       INT64MIN
+                     else
+                       match Int64.of_string_opt i with
+                       | Some j -> INT j
+                       | None -> raise (Error ("Invalid number: \"" ^ i ^ "\".", lexbuf.lex_curr_p)) }
 | '-'              { MINUS }
 | ident as lbl     { LABEL lbl }
+| '"'              { let buf = Buffer.create 100 in
+                     let curp = lexbuf.lex_curr_p in
+                     lex_string buf lexbuf;
+                     lexbuf.lex_start_p <- curp;
+                     STRING (Buffer.contents buf) }
 | '.'              { DOT }
 | '%'              { PERCENT }
 | '$'              { DOLLAR }
@@ -43,7 +51,7 @@ rule token = parse
 | "addq"           { ADDQ }
 | "subq"           { SUBQ }
 | "imulq"          { IMULQ }
-| "ctoq"           { CTOQ }
+| "cqto"           { CQTO }
 | "idivq"          { IDIVQ }
 | "orq"            { ORQ }
 | "xorq"           { XORQ }
@@ -61,12 +69,20 @@ rule token = parse
 | "incq"           { INCQ }
 | "decq"           { DECQ }
 | ';'|'#'          { comment lexbuf }
-| _ as c           { raise (Error ("invalid character: '" ^ (String.make 1 c) ^ "'.", lexbuf.lex_curr_p)) }
+| _ as c           { raise (Error ("Invalid character: '" ^ (String.make 1 c) ^ "'.", lexbuf.lex_curr_p)) }
 and
 comment = parse
 | eof              { EOF }
 | '\n'             { Lexing.new_line lexbuf; NEWLINE }
 | _                { comment lexbuf }
+and
+lex_string buf = parse
+| eof              { raise (Error ("File ended before string did.", lexbuf.lex_curr_p)) }
+| '\\''\\' as s    { Buffer.add_string buf s; lex_string buf lexbuf }
+| '\\''"' as s     { Buffer.add_string buf s; lex_string buf lexbuf }
+| _ as c           { Buffer.add_char buf c; lex_string buf lexbuf }
+| '\n'             { raise (Error ("Newline within string is not supported.", lexbuf.lex_curr_p)) }
+| '"'              { () }
 
 {
   let token_to_string tk =
@@ -74,6 +90,7 @@ comment = parse
     | EOF -> "EOF"
     | INT i -> "INT(" ^ (Int64.to_string i) ^ ")"
     | LABEL lbl -> "LABEL(" ^ lbl ^ ")"
+    | STRING str -> "STRING(\"" ^ str ^ "\")"
     | DOT -> "DOT"
     | PERCENT -> "PERCENT"
     | DOLLAR -> "DOLLAR"
@@ -99,7 +116,7 @@ comment = parse
     | ADDQ -> "ADDQ"
     | SUBQ -> "SUBQ"
     | IMULQ -> "IMULQ"
-    | CTOQ -> "CTOQ"
+    | CQTO -> "CQTO"
     | IDIVQ -> "IDIVQ"
     | ORQ -> "ORQ"
     | XORQ -> "XORQ"
