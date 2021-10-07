@@ -67,7 +67,7 @@ let process_lines (_ : line list) : X86.prog =
 %token <int64> INT
 %token <string> LABEL
 %token <string> STRING
-%token DOT PERCENT DOLLAR COLON COMMA
+%token DOT PERCENT DOLLAR COLON COMMA ASTRISK
 %token INT64MIN (* This is produced when we encounter the number 9223372036854775808 which is does not fit in a 64 bit integer but its negation does (it is the least value that does). *)
 %token MINUS (* Used for negative numbers. *)
 %token LPAREN RPAREN
@@ -88,7 +88,7 @@ let process_lines (_ : line list) : X86.prog =
 
 %%
 
-opcode:
+non_jump_opcode:
 | MOVQ                   { X86.Movq }
 | PUSHQ                  { X86.Pushq }
 | POPQ                   { X86.Popq }
@@ -106,13 +106,6 @@ opcode:
 | SHLQ                   { X86.Shlq }
 | SARQ                   { X86.Sarq }
 | SHRQ                   { X86.Shrq }
-| JMP                    { X86.Jmp }
-| JE                     { X86.J (X86.Eq) }
-| JNE                    { X86.J (X86.Neq) }
-| JG                     { X86.J (X86.Gt) }
-| JGE                    { X86.J (X86.Ge) }
-| JL                     { X86.J (X86.Lt) }
-| JLE                    { X86.J (X86.Le) }
 | CMPQ                   { X86.Cmpq }
 | SETE                   { X86.Set (X86.Eq) }
 | SETNE                  { X86.Set (X86.Neq) }
@@ -120,10 +113,20 @@ opcode:
 | SETGE                  { X86.Set (X86.Ge) }
 | SETL                   { X86.Set (X86.Lt) }
 | SETLE                  { X86.Set (X86.Le) }
-| CALLQ                  { X86.Callq }
 | RETQ                   { X86.Retq }
 | CQTO                   { X86.Cqto }
 | IDIVQ                  { X86.Idivq }
+
+jump_opcode:
+| CALLQ                  { X86.Callq }
+| JMP                    { X86.Jmp }
+| JE                     { X86.J (X86.Eq) }
+| JNE                    { X86.J (X86.Neq) }
+| JG                     { X86.J (X86.Gt) }
+| JGE                    { X86.J (X86.Ge) }
+| JL                     { X86.J (X86.Lt) }
+| JLE                    { X86.J (X86.Le) }
+
 
 integer:
 | i=INT                  { i }
@@ -137,13 +140,22 @@ immediate:
 register:
 | PERCENT l=LABEL        { process_register l $startpos }
 
-operand:
+non_jump_operand:
 | DOLLAR imm=immediate   { X86.Imm imm }
 | r=register             { X86.Reg r }
 | imm=immediate          { X86.Ind1 imm }
 | LPAREN r=register RPAREN
                          { X86.Ind2 r }
 | imm=immediate LPAREN r=register RPAREN
+                         { X86.Ind3 (imm, r) }
+
+jump_operand:
+| imm=immediate          { X86.Imm imm }
+| ASTRISK r=register     { X86.Reg r }
+| ASTRISK imm=immediate  { X86.Ind1 imm }
+| ASTRISK LPAREN r=register RPAREN
+                         { X86.Ind2 r }
+| ASTRISK imm=immediate LPAREN r=register RPAREN
                          { X86.Ind3 (imm, r) }
 
 
@@ -153,7 +165,9 @@ line:
 | DOT c=LABEL i=INT     { process_int_decl c i $startpos }
 | DOT c=LABEL s=STRING  { process_string_decl c s $startpos }
 | l=LABEL COLON         { LabelDecl l }
-| opc=opcode ops=separated_list(COMMA, operand)
+| opc=jump_opcode ops=separated_list(COMMA, jump_operand)
+                        { Instruction (opc, ops) }
+| opc=non_jump_opcode ops=separated_list(COMMA, non_jump_operand)
                         { Instruction (opc, ops) }
 
 lines:
@@ -180,6 +194,7 @@ any_token:
 | DOLLAR        { (DOLLAR, $startpos) }
 | COLON         { (COLON, $startpos)}
 | COMMA         { (COMMA, $startpos)}
+| ASTRISK       { (ASTRISK, $startpos)}
 | LPAREN        { (LPAREN, $startpos) }
 | RPAREN        { (RPAREN, $startpos) }
 | INT64MIN      { (INT64MIN, $startpos) }
@@ -219,7 +234,6 @@ any_token:
 | RETQ          { (RETQ, $startpos)}
 | CQTO          { (CQTO, $startpos)}
 | IDIVQ         { (IDIVQ, $startpos)}
-
 
 token_list :
 | p = any_token* EOF { p }
