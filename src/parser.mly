@@ -7,6 +7,10 @@
 %token NEWLINE
 %token <int64> INT
 %token <string> LABEL
+%token DOT PERCENT DOLLAR COLON COMMA
+%token INT64MIN (* This is produced when we encounter the number 9223372036854775808 which is does not fit in a 64 bit integer but its negation does (it is the least value that does). *)
+%token MINUS (* Used for negative numbers. *)
+%token LPAREN RPAREN
 %token MOVQ PUSHQ POPQ
 %token LEAQ
 %token INCQ DECQ NEGQ NOTQ
@@ -28,6 +32,15 @@ any_token:
 | NEWLINE       { (NEWLINE, $startpos) }
 | i = INT       { (INT i, $startpos) }
 | lbl = LABEL   { (LABEL lbl, $startpos) }
+| DOT           { (DOT, $startpos) }
+| PERCENT       { (PERCENT, $startpos) }
+| DOLLAR        { (DOLLAR, $startpos) }
+| COLON         { (COLON, $startpos)}
+| COMMA         { (COMMA, $startpos)}
+| LPAREN        { (LPAREN, $startpos) }
+| RPAREN        { (RPAREN, $startpos) }
+| INT64MIN      { (INT64MIN, $startpos) }
+| MINUS         { (MINUS, $startpos) }
 | MOVQ          { (MOVQ, $startpos)}
 | PUSHQ         { (PUSHQ, $startpos)}
 | POPQ          { (POPQ, $startpos)}

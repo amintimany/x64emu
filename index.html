@@ -21,20 +21,34 @@
             <pre style="height:70vh;" id="x64emu_the_code"></pre>
             <div >
                 <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
-                <div class="form-check form-switch display-inline mx-2">
+                <!-- <div class="form-check form-switch display-inline mx-2">
                     <input class="form-check-input" type="checkbox" id="x64emu_check_box_show_parsing">
                     <label class="form-check-label">Show detailed results of lexing and parsing of the input</label>
-                </div>
+                </div> -->
             </div>
         </div>
         <div class="mb-3 mt-3 col-10 mx-auto" id="x64emu_load_result"></div>
     </div>
-
+    
+    <div style="height: 20em;"></div>
+    <footer class="sticky-bottom py-2 bg-primary">
+        <div class="container text-light text-center">
+            <small>Created using <a href="https://ocsigen.org/js_of_ocaml/latest/manual/overview" class="text-light" target="_blank">Js_of_ocaml</a>, the <a href="https://ace.c9.io/" class="text-light" target="_blank">Ace</a> code editor, and the <a href="https://getbootstrap.com/" class="text-light" target="_blank">Bootstrap</a> theme <a href="https://bootswatch.com/sandstone/" class="text-light" target="_blank">Sandstone</a>.</small>
+        </div>
+        <div class="container text-light text-center">
+            <small>This web page belongs to the <a href="https://www.cs.au.dk/" class="text-light" target="_blank">Department of Computer Science</a>, <a href="https://www.au.dk/" class="text-light" target="_blank">Aarhus University</a>.</small>
+        </div>
+        <div class="container text-light text-center pt-2">
+            <small class="font-weight-bold">Copyright &copy; 2021 by Amin Timany. All rights reserved.</small>
+        </div>
+    </footer>
     <script>
         var editor = ace.edit("x64emu_the_code");
         editor.setTheme("ace/theme/monokai");
         editor.session.setMode("ace/mode/assembly_x86");
-        document.getElementById("x64emu_the_code").style.fontSize = (Math.round(screen.width/130)).toString().concat("px");
+        editor.setShowPrintMargin(false);
+        document.getElementById("x64emu_the_code").style.fontSize = (Math.min(Math.max(Math.round(screen.width/200), 12), 50)).toString().concat("px");
+        editor.focus();
     </script>
   </body>
 </html>
