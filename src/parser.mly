@@ -1,37 +1,35 @@
 %{
 
-exception ParseError of string * Lexing.position
+open Common
 
 type section_type = TextSec | DataSec
 
-type data_decl = QUAD of int64 | ASCIZ of string
-
 type line =
-| SectionDecl of section_type
-| Globalize of X86.lbl
-| DataDecl of data_decl
-| LabelDecl of X86.lbl
-| Instruction of X86.ins
+| SectionDecl of section_type * Lexing.position
+| Globalize of X86.lbl * Lexing.position
+| DataDecl of X86.data * Lexing.position
+| Instruction of X86.ins * Lexing.position
+| LabelDecl of X86.lbl * Lexing.position
 
 let process_section lbl pos = 
     match lbl with
-    | "text" -> SectionDecl TextSec
-    | "data" -> SectionDecl DataSec
+    | "text" -> SectionDecl (TextSec, pos)
+    | "data" -> SectionDecl (DataSec, pos)
     | l -> raise (ParseError ("Unkown section declared: \"." ^ l ^ "\"", pos))
 
 let process_declaration_command cmd lbl pos = 
     match cmd with
-    | "global" -> Globalize lbl
+    | "global" | "globl" -> Globalize (lbl, pos)
     | l -> raise (ParseError ("Unkown command/data declaration: \"." ^ l ^ "\"", pos))
 
 let process_int_decl cmd i pos =
     match cmd with
-    | "quad" -> DataDecl (QUAD i)
+    | "quad" -> DataDecl (X86.Quad (X86.Lit i), pos)
     | l -> raise (ParseError ("Unkown integer data declaration: \"." ^ l ^ "\", did you mean \".quad\"?", pos))
 
 let process_string_decl cmd s pos =
     match cmd with
-    | "asciz" -> DataDecl (ASCIZ s)
+    | "asciz" -> DataDecl (X86.Asciz s, pos)
     | l -> raise (ParseError ("Unkown string data declaration: \"." ^ l ^ "\", did you mean \".asciz\"?", pos))
 
 let process_register l pos =
@@ -45,8 +43,8 @@ let process_register l pos =
     | "rdi" -> X86.Rdi
     | "rbp" -> X86.Rbp
     | "rsp" -> X86.Rsp
-    | "r08" -> X86.R08
-    | "r09" -> X86.R09
+    | "r8" -> X86.R08
+    | "r9" -> X86.R09
     | "r10" -> X86.R10
     | "r11" -> X86.R11
     | "r12" -> X86.R12
@@ -55,10 +53,78 @@ let process_register l pos =
     | "r15" -> X86.R15
     | l -> raise (ParseError ("Unkown register: \"%" ^ l ^ "\"", pos))
 
-exception UNIMPLEMENTED
-
-let process_lines (_ : line list) : X86.prog =
-    raise UNIMPLEMENTED
+let process_lines (lns : line list) : X86.prog =
+  let res = ref [] in
+  let current_section = ref None in
+  let global_labels = ref [] in
+  let current_block_label = ref None in
+  let current_block_instrs = ref [] in
+  let current_block_data_decls = ref [] in
+  let can_make_block () =
+    match !current_block_label with 
+    | None -> false
+    | Some _ ->
+        match !current_section with
+        | None -> false
+        | Some DataSec -> true
+        | Some TextSec -> true
+  in
+  let make_block () =
+    let label = 
+      match !current_block_label with 
+      | None -> raise InternalParsingError
+      | Some l -> l
+    in
+    match !current_section with
+    | None -> raise InternalParsingError
+    | Some DataSec -> X86.Asm.data label !current_block_data_decls
+    | Some TextSec -> 
+        match List.find_opt (fun l -> l = label) !global_labels with
+        | None -> X86.Asm.text label !current_block_instrs
+        | Some _ -> X86.Asm.gtext label !current_block_instrs
+  in
+  let add_insrt_to_block instr pos =
+    match !current_section with
+    | None -> raise (ParseError ("Instruction encounterd outside any section!", pos))
+    | Some DataSec -> raise (ParseError ("Instruction in data section!", pos))
+    | Some TextSec ->
+        match !current_block_label with
+        | None -> raise (ParseError ("Instruction added before any label!", pos))
+        | Some _ -> current_block_instrs := !current_block_instrs @ [instr]
+  in
+  let add_data_decl_to_block dd pos =
+    match !current_section with
+    | None -> raise (ParseError ("Data declaration encounterd outside any section!", pos))
+    | Some TextSec -> raise (ParseError ("Data declaration in text section!", pos))
+    | Some DataSec ->
+        match !current_block_label with
+        | None -> raise (ParseError ("Data added before any label was declared!", pos))
+        | Some _ -> current_block_data_decls := !current_block_data_decls @ [dd]
+  in
+  let enter_section sec =
+    if can_make_block () then res := !res @ [make_block ()];
+    current_section := Some sec;
+    current_block_label := None;
+    current_block_instrs := [];
+    current_block_data_decls := []
+  in
+  let add_label l pos =
+    match !current_section with
+    | None -> raise (ParseError ("Label declared outside any section!", pos))
+    | Some sec -> if can_make_block () then enter_section sec; current_block_label := Some l
+  in
+  let rec proc_lines = function
+    | [] -> if can_make_block () then res := !res @ [make_block ()]; !res
+    | ln :: lns -> 
+      (match ln with
+      | SectionDecl (sec, _) -> enter_section sec
+      | Globalize (l, _) -> global_labels := l :: !global_labels
+      | DataDecl (dd, pos) -> add_data_decl_to_block dd pos
+      | Instruction (instr, pos) -> add_insrt_to_block instr pos
+      | LabelDecl (l, pos) -> add_label l pos
+      );proc_lines lns
+  in
+  proc_lines lns
 %}
 
 
@@ -164,11 +230,11 @@ line:
 | DOT c=LABEL l=LABEL   { process_declaration_command c l $startpos }
 | DOT c=LABEL i=INT     { process_int_decl c i $startpos }
 | DOT c=LABEL s=STRING  { process_string_decl c s $startpos }
-| l=LABEL COLON         { LabelDecl l }
+| l=LABEL COLON         { LabelDecl (l, $startpos) }
 | opc=jump_opcode ops=separated_list(COMMA, jump_operand)
-                        { Instruction (opc, ops) }
+                        { Instruction ((opc, ops), $startpos) }
 | opc=non_jump_opcode ops=separated_list(COMMA, non_jump_operand)
-                        { Instruction (opc, ops) }
+                        { Instruction ((opc, ops), $startpos) }
 
 lines:
 | NEWLINE* ln=line lns=after_line

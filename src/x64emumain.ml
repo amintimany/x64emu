@@ -1,15 +1,16 @@
 open Lexing
 
-type result =
-| Ok of (Parser.token * position) list
+type 'a result =
 | LexingError of string * position
-
-let format_position p = Printf.sprintf "%d : %d" p.pos_lnum (p.pos_cnum - p.pos_bol + 1)
+| ParsingError of string * position option
+| Ok of 'a
 
 let load_the_code (code : string) = 
   let lexbuf = Lexing.from_string code in
   try
-    let ltks = Parser.token_list Lexer.token lexbuf in
-    Ok ltks
+    let prog = Parser.prog Lexer.token lexbuf in
+    Ok (X86.string_of_prog prog)
   with
-    Lexer.Error (msg, p) -> LexingError (msg, p)
+  | Lexer.Error (msg, p) -> LexingError (msg, p)
+  | Parser.Error -> ParsingError ("Parse Error", None)
+  | Common.ParseError (msg, p) -> ParsingError (msg, Some p)
