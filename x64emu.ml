@@ -37,7 +37,8 @@ Html.handler (fun _ ->
     match response with
     | LexingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Lexing Error" err (Some p))
     | ParsingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Parsing Error" err p)
-    | Ok res -> x64emu_load_result##.innerHTML := Js.string (success_message ^ "<pre>" ^ res ^ "</pre>")
+    | LoadingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Error in loading the program" err (Some p))
+    | Ok _ -> x64emu_load_result##.innerHTML := Js.string (success_message)
   in
   Js.bool false)
 in

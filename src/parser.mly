@@ -24,12 +24,12 @@ let process_declaration_command cmd lbl pos =
 
 let process_int_decl cmd i pos =
     match cmd with
-    | "quad" -> DataDecl (X86.Quad (X86.Lit i), pos)
+    | "quad" -> DataDecl (X86.Quad (X86.Lit i, pos), pos)
     | l -> raise (ParseError ("Unkown integer data declaration: \"." ^ l ^ "\", did you mean \".quad\"?", pos))
 
 let process_string_decl cmd s pos =
     match cmd with
-    | "asciz" -> DataDecl (X86.Asciz s, pos)
+    | "asciz" -> DataDecl (X86.Asciz (s, pos), pos)
     | l -> raise (ParseError ("Unkown string data declaration: \"." ^ l ^ "\", did you mean \".asciz\"?", pos))
 
 let process_register l pos =
@@ -56,6 +56,7 @@ let process_register l pos =
 let process_lines (lns : line list) : X86.prog =
   let res = ref [] in
   let current_section = ref None in
+  let all_labels = ref [] in
   let global_labels = ref [] in
   let current_block_label = ref None in
   let current_block_instrs = ref [] in
@@ -109,6 +110,10 @@ let process_lines (lns : line list) : X86.prog =
     current_block_data_decls := []
   in
   let add_label l pos =
+    (match List.find_opt (fun s -> s = l) !all_labels with
+    | Some _ -> raise (ParseError ("Label \""^ l ^"\" is already declared!", pos))
+    | None -> ()); 
+    all_labels := l :: !all_labels;
     match !current_section with
     | None -> raise (ParseError ("Label declared outside any section!", pos))
     | Some sec -> if can_make_block () then enter_section sec; current_block_label := Some l
@@ -232,9 +237,9 @@ line:
 | DOT c=LABEL s=STRING  { process_string_decl c s $startpos }
 | l=LABEL COLON         { LabelDecl (l, $startpos) }
 | opc=jump_opcode ops=separated_list(COMMA, jump_operand)
-                        { Instruction ((opc, ops), $startpos) }
+                        { Instruction ((opc, ops, $startpos), $startpos) }
 | opc=non_jump_opcode ops=separated_list(COMMA, non_jump_operand)
-                        { Instruction ((opc, ops), $startpos) }
+                        { Instruction ((opc, ops, $startpos), $startpos) }
 
 lines:
 | NEWLINE* ln=line lns=after_line

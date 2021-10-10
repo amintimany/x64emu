@@ -49,10 +49,10 @@ type opcode = Movq | Pushq | Popq
 (* An instruction is an opcode plus its operands.
    Note that arity and other constraints about the operands
    are not checked. *)
-type ins = opcode * operand list
+type ins = opcode * operand list * Lexing.position
 
-type data = Asciz of string
-              | Quad of imm
+type data = Asciz of string * Lexing.position
+              | Quad of imm * Lexing.position
 
 type asm = Text of ins list    (* code *)
              | Data of data list   (* data *)
@@ -136,7 +136,7 @@ let string_of_shift oper args =
   | args -> failwith ("shift instruction has invalid operands: " ^
                          (map_concat ", " string_of_operand args))
 
-let string_of_ins (oper, args) : string =
+let string_of_ins (oper, args, _) : string =
   match oper with
     Shlq | Sarq | Shrq -> string_of_shift oper args
   | Comment _ -> "\t" ^ string_of_opcode oper
@@ -185,8 +185,8 @@ end
 
 
 let string_of_data = function 
-   (Asciz s) -> "\t.asciz\t" ^ "\"" ^ (as_encode s) ^ "\""
-  | (Quad i) -> "\t.quad\t" ^ string_of_imm i
+   (Asciz (s, _)) -> "\t.asciz\t" ^ "\"" ^ (as_encode s) ^ "\""
+  | (Quad (i, _)) -> "\t.quad\t" ^ string_of_imm i
 
 
 let string_of_asm = function 
