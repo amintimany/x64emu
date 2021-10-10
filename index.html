@@ -17,17 +17,72 @@
     <div class="container-fluid">
         <div class="mb-3 mt-3 col-10 mx-auto">
             <label class="form-label">Assembly source code:</label>
-            <pre style="height:70vh;" id="x64emu_the_code"></pre>
+            <pre style="height:70vh;" id="x64emu_the_code">
+                .text
+                _arith_main:
+                pushq	%rbp
+                movq	%rsp,	%rbp
+                callq	__arith_label_0
+                callq	__arith_label_1
+                callq	__arith_label_6
+                movq	$0,	%rax
+                popq	%rbp
+                retq</pre>
             <div >
+                <div class="form-group col-2">
+                    <label for="exampleInputEmail1" class="form-label mt-4">Entry point:</label>
+                    <input type="text" class="form-control" id="x64emu_entry_point" value="_arith_main">
+                </div>
                 <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
-                <!-- <div class="form-check form-switch display-inline mx-2">
-                    <input class="form-check-input" type="checkbox" id="x64emu_check_box_show_parsing">
-                    <label class="form-check-label">Show detailed results of lexing and parsing of the input</label>
-                </div> -->
             </div>
         </div>
         <div class="mb-3 mt-3 col-10 mx-auto" id="x64emu_load_result"></div>
+        <div class="container-fluid">
+            <h3><b>The machine:</b></h3>
+            <hr/>
+            <div class="row">
+                <div class="col-3">
+                    <h5><b>Registers:</b></h5>
+                    <table class="col-3 table table-hover table-striped table-bordered">
+                        <tbody id="x64emu_register_table">
+                        </tbody>
+                    </table>
+                    <h5><b>Flags:</b></h5>
+                    <table class="col-3 table table-hover table-striped table-bordered">
+                        <tbody id="x64emu_flags_table">
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-5">
+                    <h5><b>The Program:</b></h5>
+                    <div class="table-responsive border border-dark overflow-scroll" style="height: 100vh;">
+                        <table class="col-5 table table-bordered border-primary table-hover table-borderless">
+                            <tbody id="x64emu_program_table"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <h5><b>The Memory:</b></h5>
+                    <h6><b>The Heap:</b></h6>
+                    <div class="table-responsive border border-dark overflow-scroll mb-3" style="height: 47vh;">
+                        <table class="col-4 table table-hover table-borderless">
+                            <tbody id="x64emu_heap_table"></tbody>
+                        </table>
+                    </div>
+                    <h6><b>The Stack:</b></h6>
+                    <div class="table-responsive border border-dark overflow-scroll" style="height: 47vh;">
+                        <table class="col-4 table table-hover table-borderless">
+                            <tbody id="x64emu_stack_table"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+
+
+
     
     <div style="height: 20em;"></div>
     <footer class="sticky-bottom py-2 bg-primary">
@@ -48,6 +103,16 @@
         editor.setShowPrintMargin(false);
         document.getElementById("x64emu_the_code").style.fontSize = (Math.min(Math.max(Math.round(screen.width/200), 12), 50)).toString().concat("px");
         editor.focus();
+        function bring_to_view (id){
+            document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+        }
+        function toggle_table_active (id, turnon){
+            elem = document.getElementById(id);
+            if (turnon)
+            { elem.className = "table-active fw-bold" }
+            else
+            { elem.className = "" }
+        }
     </script>
   </body>
 </html>

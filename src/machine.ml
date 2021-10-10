@@ -7,7 +7,7 @@ type segfault = BadJump
 
 type machine_mode = Normal | ExceptionHasOccured | SegFault of segfault
 
-exception ErrorInitializingMachine of string * Lexing.position
+exception ErrorInitializingMachine of string * Lexing.position option
 
 type machine = {
 (* The rip register. This is a special register in our implementation. It cannot be directly read or written to.
@@ -37,9 +37,9 @@ flag_ZF : bool ref;
 flag_CF : bool ref;
 flag_PF : bool ref;
 (* heap boundary *)
-heap_boundary : int64;
+heap_boundary : int;
 (* stack boundary  *)
-stack_boundary : int64;
+stack_boundary : int;
 (* mode *)
 mode : machine_mode ref;
 (* memory *)
@@ -47,8 +47,8 @@ memory : memory;
 (* program *)
 prog : X86.ins array;
 (* labels *)
-prog_labels : int LabelMap.t ref;
-data_labels : int LabelMap.t ref;
+prog_labels : int LabelMap.t;
+data_labels : int LabelMap.t;
 }
 
 let int64_to_bits (n : int64) : bool array =
@@ -65,9 +65,9 @@ let bits_to_int64 (b : bool array) : int64 =
     let rec bits_to_int64_aux i =
         res := Int64.shift_left !res 1;
         if b.(i) then res := Int64.add !res 1L else ();
-        if i = 63 then () else bits_to_int64_aux (i + 1)
+        if i = 0 then () else bits_to_int64_aux (i - 1)
     in
-    bits_to_int64_aux 0;
+    bits_to_int64_aux 63;
     !res
 
 (* Note: this converts little-endian. *)
@@ -99,9 +99,9 @@ let bit_array_get_byte (b : bool array) (offset : int) =
     let rec bit_array_get_byte_aux i =
         res := !res lsl 1;
         if b.(offset + i) then res := !res + 1 else ();
-        if i = 7 then () else bit_array_get_byte_aux (i + 1)
+        if i = 0 then () else bit_array_get_byte_aux (i - 1)
     in
-bit_array_get_byte_aux 0; !res
+bit_array_get_byte_aux 7; !res
 
 let bit_array_set_byte (b : bool array) (n : int) (offset : int) =
     let rec bit_array_set_byte_aux i (mask : int) =
@@ -110,13 +110,44 @@ let bit_array_set_byte (b : bool array) (n : int) (offset : int) =
       in
       bit_array_set_byte_aux 0 1
 
+let byte_to_hex (b : bool array) (offset : int) =
+    let n = bit_array_get_byte b offset in
+    let nibble_to_hex nb =
+        match nb with
+        | 0 -> "0"
+        | 1 -> "1"
+        | 2 -> "2"
+        | 3 -> "3"
+        | 4 -> "4"
+        | 5 -> "5"
+        | 6 -> "6"
+        | 7 -> "7"
+        | 8 -> "8"
+        | 9 -> "9"
+        | 10 -> "A"
+        | 11 -> "B"
+        | 12 -> "C"
+        | 13 -> "D"
+        | 14 -> "E"
+        | 15 -> "F"
+        | _ -> raise (ErrorInitializingMachine ("Internal error, please report", None))
+    in
+    nibble_to_hex (n / 16) ^ nibble_to_hex (n mod 16)
+    
+let int64_to_hex_string (n : int64) =
+    let bits = int64_to_bits n in
+    "0x" ^ (byte_to_hex bits 56) ^ (byte_to_hex bits 48) ^ (byte_to_hex bits 40) ^ (byte_to_hex bits 32) ^ (byte_to_hex bits 24) ^ (byte_to_hex bits 16) ^ (byte_to_hex bits 8) ^  (byte_to_hex bits 0)
+    
+
 (* Creates a machine and loads the X86 program. *)
-let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog) : machine =
-    (* Adjust address_bits to between 10 and 20 bits. *)
-    let address_bits_adjusted = if address_bits < 16 then 16 else if address_bits > 32 then 32 else address_bits in
+let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog) (entry_point : string) : machine =
+    (* Adjust address_bits to between 16 and 26 bits, i.e., 64 KB to 64 MB. *)
+    let address_bits_adjusted = if address_bits < 16 then 16 else if address_bits > 26 then 26 else address_bits in
     let memory_size = 1 lsl address_bits_adjusted in
-    let stack_size_bits_adjusted = if stack_size_bits < 10 then 10 else if stack_size_bits > 20 then 20 else stack_size_bits in
-    let last_stack_address = Int64.of_int (memory_size - (1 lsl stack_size_bits_adjusted)) in
+    let inital_stack_pointer = Int64.of_int memory_size in
+    (* Adjust address_bits to between 10 and 16 bits, i.e., 1 KB to 64 KB. *)
+    let stack_size_bits_adjusted = if stack_size_bits < 10 then 10 else if stack_size_bits > 16 then 16 else stack_size_bits in
+    let last_stack_address = memory_size - (1 lsl stack_size_bits_adjusted) in
     let mem = Memory.create Bigarray.Int8_unsigned Bigarray.c_layout memory_size in
     let prg_list = ref [] in
     let prg_lbls = ref LabelMap.empty in
@@ -144,7 +175,7 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
                     Memory.set mem (offset + 6) (bit_array_get_byte b6 0);
                     Memory.set mem (offset + 7) (bit_array_get_byte b7 0);
                 end
-            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported.", pos))
+            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported", Some pos))
             | X86.Asciz (s, _) ->
                 let offset = !least_free_address in
                 least_free_address := offset + (String.length s + 1);
@@ -161,18 +192,24 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
     in
     let initialize_machine prg = List.iter add_elem prg in
     initialize_machine prog;
+    let inital_rip = 
+        match LabelMap.find_opt entry_point !prg_lbls with
+        | None -> raise (ErrorInitializingMachine ("Invalid Entry point: \"" ^ entry_point ^ "\"", None))
+        | Some i -> i
+    in
     let ms =
-      {rip = ref 0; rax = ref 0L; rbx = ref 0L; rcx = ref 0L; rdx = ref 0L; rsi = ref 0L; rdi = ref 0L;
-       rbp = ref 0L; rsp = ref 0L; r8 = ref 0L; r9 = ref 0L; r10 = ref 0L; r11 = ref 0L; r12 = ref 0L;
+      {rip = ref inital_rip; rax = ref 0L; rbx = ref 0L; rcx = ref 0L; rdx = ref 0L; rsi = ref 0L; rdi = ref 0L;
+       rbp = ref 0L; rsp = ref inital_stack_pointer; r8 = ref 0L; r9 = ref 0L; r10 = ref 0L; r11 = ref 0L; r12 = ref 0L;
        r13 = ref 0L; r14 = ref 0L; r15 = ref 0L;
        flag_OF = ref false; flag_SF = ref false; flag_ZF = ref false; flag_CF = ref false;
        flag_PF = ref false;
-       heap_boundary = Int64.of_int !least_free_address;
+       heap_boundary = !least_free_address;
        stack_boundary = last_stack_address;
        mode = ref Normal;
        memory = mem;
        prog = Array.of_list (List.rev !prg_list);
-       prog_labels = prg_lbls;
-       data_labels = data_lbls}
+       prog_labels = !prg_lbls;
+       data_labels = !data_lbls}
     in
+    if ms.heap_boundary > ms.stack_boundary then raise (ErrorInitializingMachine ("The heap and can stack overlap in the constructed machine.", None));
     ms
