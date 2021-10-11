@@ -133,7 +133,12 @@ let byte_to_hex (b : bool array) (offset : int) =
         | _ -> raise (ErrorInitializingMachine ("Internal error, please report", None))
     in
     nibble_to_hex (n / 16) ^ nibble_to_hex (n mod 16)
-    
+
+let int_byte_to_hex (n : int) =
+    let bits = Array.init 8 (fun _ -> false) in
+    bit_array_set_byte bits n 0;
+    "0x" ^ (byte_to_hex bits 0)
+
 let int64_to_hex_string (n : int64) =
     let bits = int64_to_bits n in
     "0x" ^ (byte_to_hex bits 56) ^ (byte_to_hex bits 48) ^ (byte_to_hex bits 40) ^ (byte_to_hex bits 32) ^ (byte_to_hex bits 24) ^ (byte_to_hex bits 16) ^ (byte_to_hex bits 8) ^  (byte_to_hex bits 0)
