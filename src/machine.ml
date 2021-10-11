@@ -1,3 +1,5 @@
+open Binops
+
 module Memory = Bigarray.Array1
 module LabelMap = Map.Make(String)
 
@@ -9,7 +11,7 @@ exception ErrorInitializingMachine of string * Lexing.position option
 
 exception InternalError
 
-exception SegFault of string
+exception Error of string * Lexing.position option
 
 type machine = {
 (* The rip register. This is a special register in our implementation. It cannot be directly read or written to.
@@ -33,11 +35,7 @@ r13 : int64 ref;
 r14 : int64 ref;
 r15 : int64 ref;
 (* flags *)
-flag_OF : bool ref;
-flag_SF : bool ref;
-flag_ZF : bool ref;
-flag_CF : bool ref;
-flag_PF : bool ref;
+flags : flags;
 (* heap boundary *)
 heap_boundary : int;
 (* stack boundary  *)
@@ -53,184 +51,134 @@ prog_labels : int LabelMap.t;
 data_labels : int LabelMap.t;
 }
 
-let int64_to_bits (n : int64) : bool array =
-    let res = Array.init 64 (fun _ -> false) in
-    let rec int64_to_bits_aux i (mask : int64) =
-        if Int64.logand n mask = 0L then () else res.(i) <- true;
-        if i = 63 then () else int64_to_bits_aux (i + 1) (Int64.shift_left mask 1)
-    in
-    int64_to_bits_aux 0 1L;
-    res
+let load_64bits_from_memory memory addr opos =
+    if addr < 0 || Memory.dim memory <= addr + 7 then raise (Error ("Invalid memory access. Attempted to access memory at address " ^ (int64_to_hex_string (Int64.of_int addr)) ^ ".", opos));
+    let bits = Array.init 64 (fun _ -> false) in
+    bit_array_set_byte bits (Memory.get memory addr) 0;
+    bit_array_set_byte bits (Memory.get memory (addr + 1)) 8;
+    bit_array_set_byte bits (Memory.get memory (addr + 2)) 16;
+    bit_array_set_byte bits (Memory.get memory (addr + 3)) 24;
+    bit_array_set_byte bits (Memory.get memory (addr + 4)) 32;
+    bit_array_set_byte bits (Memory.get memory (addr + 5)) 40;
+    bit_array_set_byte bits (Memory.get memory (addr + 6)) 48;
+    bit_array_set_byte bits (Memory.get memory (addr + 7)) 56;
+    bits
 
-let bits_to_int64 (b : bool array) : int64 =
-    let res = ref 0L in
-    let rec bits_to_int64_aux i =
-        res := Int64.shift_left !res 1;
-        if b.(i) then res := Int64.add !res 1L else ();
-        if i = 0 then () else bits_to_int64_aux (i - 1)
-    in
-    bits_to_int64_aux 63;
-    !res
-
-(* Note: this converts little-endian. *)
-let int64_to_bytes (i : int64) : (bool array * bool array * bool array * bool array * bool array * bool array * bool array * bool array) =
-    let bits = int64_to_bits i in
-    (* get bits with offset *)
-    let gbo offset i = bits.(offset + i) in
-    (Array.init 8 (gbo 0), Array.init 8 (gbo 8), Array.init 8 (gbo 16), Array.init 8 (gbo 24), 
-     Array.init 8 (gbo 32), Array.init 8 (gbo 40), Array.init 8 (gbo 48), Array.init 8 (gbo 56))
-
-(* Note: this converts little-endian. *)
-let bytes_to_int64 (b0, b1, b2, b3, b4, b5, b6, b7) : int64 =
-    let get_bit i =
-      match i with
-      | _ when (i < 8) -> b0.(i)
-      | _ when (8 <= i && i < 16) -> b1.(i - 8)
-      | _ when (16 <= i && i < 24) -> b2.(i - 16)
-      | _ when (24 <= i && i < 32) -> b3.(i - 24)
-      | _ when (32 <= i && i < 40) -> b4.(i - 32)
-      | _ when (40 <= i && i < 48) -> b5.(i - 40)
-      | _ when (48 <= i && i < 56) -> b6.(i - 48)
-      | _ when (56 <= i && i < 64) -> b7.(i - 56)
-      | _ -> false
-    in
-    bits_to_int64 (Array.init 64 get_bit)
-
-let bit_array_get_byte (b : bool array) (offset : int) =
-    let res = ref 0 in
-    let rec bit_array_get_byte_aux i =
-        res := !res lsl 1;
-        if b.(offset + i) then res := !res + 1 else ();
-        if i = 0 then () else bit_array_get_byte_aux (i - 1)
-    in
-bit_array_get_byte_aux 7; !res
-
-let bit_array_set_byte (b : bool array) (n : int) (offset : int) =
-    let rec bit_array_set_byte_aux i (mask : int) =
-        if n land mask = 0 then () else b.(offset + i) <- true;
-        if i = 7 then () else bit_array_set_byte_aux (i + 1) (mask lsl 1)
-      in
-      bit_array_set_byte_aux 0 1
-
-let byte_to_hex (b : bool array) (offset : int) =
-    let n = bit_array_get_byte b offset in
-    let nibble_to_hex nb =
-        match nb with
-        | 0 -> "0"
-        | 1 -> "1"
-        | 2 -> "2"
-        | 3 -> "3"
-        | 4 -> "4"
-        | 5 -> "5"
-        | 6 -> "6"
-        | 7 -> "7"
-        | 8 -> "8"
-        | 9 -> "9"
-        | 10 -> "A"
-        | 11 -> "B"
-        | 12 -> "C"
-        | 13 -> "D"
-        | 14 -> "E"
-        | 15 -> "F"
-        | _ -> raise (ErrorInitializingMachine ("Internal error, please report", None))
-    in
-    nibble_to_hex (n / 16) ^ nibble_to_hex (n mod 16)
-
-let int_byte_to_hex (n : int) =
-    let bits = Array.init 8 (fun _ -> false) in
-    bit_array_set_byte bits n 0;
-    "0x" ^ (byte_to_hex bits 0)
-
-let int64_to_hex_string (n : int64) =
-    let bits = int64_to_bits n in
-    "0x" ^ (byte_to_hex bits 56) ^ (byte_to_hex bits 48) ^ (byte_to_hex bits 40) ^ (byte_to_hex bits 32) ^ (byte_to_hex bits 24) ^ (byte_to_hex bits 16) ^ (byte_to_hex bits 8) ^  (byte_to_hex bits 0)
+let store_64bits_to_memory memory addr bits opos =
+    if addr < 0 || Memory.dim memory <= addr + 7 then raise (Error ("Invalid memory access. Attempted to write to memory at address " ^ (int64_to_hex_string (Int64.of_int addr)) ^ ".", opos));
+    if Array.length bits < 64 then raise InternalError;
+    Memory.set memory addr (bit_array_get_byte bits 0);
+    Memory.set memory (addr + 1) (bit_array_get_byte bits 8);
+    Memory.set memory (addr + 2) (bit_array_get_byte bits 16);
+    Memory.set memory (addr + 3) (bit_array_get_byte bits 24);
+    Memory.set memory (addr + 4) (bit_array_get_byte bits 32);
+    Memory.set memory (addr + 5) (bit_array_get_byte bits 40);
+    Memory.set memory (addr + 6) (bit_array_get_byte bits 48);
+    Memory.set memory (addr + 7) (bit_array_get_byte bits 56)
     
+type resolved_operand = Lit of int64 | Reg of int64 ref | Addr of int
 
-(* Creates a machine and loads the X86 program. *)
-let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog) (entry_point : string) : machine =
-    (* Adjust address_bits to between 16 and 26 bits, i.e., 64 KB to 64 MB. *)
-    let address_bits_adjusted = if address_bits < 16 then 16 else if address_bits > 26 then 26 else address_bits in
-    let memory_size = 1 lsl address_bits_adjusted in
-    let inital_stack_pointer = Int64.of_int memory_size in
-    (* Adjust address_bits to between 10 and 16 bits, i.e., 1 KB to 64 KB. *)
-    let stack_size_bits_adjusted = if stack_size_bits < 10 then 10 else if stack_size_bits > 16 then 16 else stack_size_bits in
-    let last_stack_address = memory_size - (1 lsl stack_size_bits_adjusted) in
-    let mem = Memory.create Bigarray.Int8_unsigned Bigarray.c_layout memory_size in
-    let prg_list = ref [] in
-    let prg_lbls = ref LabelMap.empty in
-    let data_lbls = ref LabelMap.empty in
-    let least_free_address = ref 0 in
-    let add_text_block lbl instrs =
-        prg_lbls := LabelMap.add lbl (List.length !prg_list) !prg_lbls;
-        prg_list := List.rev_append instrs !prg_list
-    in
-    let add_data_block lbl data =
-        data_lbls := LabelMap.add lbl !least_free_address !data_lbls;
-        let add_data_decl dt =
-            match dt with
-            | X86.Quad (X86.Lit n, _) ->
-                begin
-                    let offset = !least_free_address in
-                    least_free_address := offset + 8;
-                    let (b0, b1, b2, b3, b4, b5, b6, b7) = int64_to_bytes n in
-                    Memory.set mem offset (bit_array_get_byte b0 0);
-                    Memory.set mem (offset + 1) (bit_array_get_byte b1 0);
-                    Memory.set mem (offset + 2) (bit_array_get_byte b2 0);
-                    Memory.set mem (offset + 3) (bit_array_get_byte b3 0);
-                    Memory.set mem (offset + 4) (bit_array_get_byte b4 0);
-                    Memory.set mem (offset + 5) (bit_array_get_byte b5 0);
-                    Memory.set mem (offset + 6) (bit_array_get_byte b6 0);
-                    Memory.set mem (offset + 7) (bit_array_get_byte b7 0);
-                end
-            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported", Some pos))
-            | X86.Asciz (s, _) ->
-                let offset = !least_free_address in
-                least_free_address := offset + (String.length s + 1);
-                String.iteri (fun i c -> Memory.set mem (offset + i) (Char.code c)) s;
-                Memory.set mem (offset + String.length s) 0
+let resolve_register machine reg pos =
+    match reg with
+    | X86.Rip -> raise (Error ("The %rip register cannot be accessed directly.", Some pos))
+    | X86.Rax -> machine.rax
+    | X86.Rbx -> machine.rbx
+    | X86.Rcx -> machine.rcx
+    | X86.Rdx -> machine.rdx
+    | X86.Rsi -> machine.rsi
+    | X86.Rdi -> machine.rdi
+    | X86.Rbp -> machine.rbp
+    | X86.Rsp -> machine.rsp
+    | X86.R08 -> machine.r8
+    | X86.R09 -> machine.r9
+    | X86.R10 -> machine.r10
+    | X86.R11 -> machine.r11
+    | X86.R12 -> machine.r12
+    | X86.R13 -> machine.r13
+    | X86.R14 -> machine.r14
+    | X86.R15 -> machine.r15
 
+let resolve_immediate machine imm pos =
+    match imm with
+    | X86.Lit x -> Lit x
+    | X86.Lbl l -> 
+        match LabelMap.find_opt l machine.data_labels with
+        | Some i -> Addr i
+        | None -> raise (Error ("Label \"" ^ l ^ "\" is not a declared data label.", Some pos))
+
+let resolve_operand machine operand pos =
+    match operand with
+    | X86.Imm imm -> resolve_immediate machine imm pos
+    | X86.Reg r -> Reg (resolve_register machine r pos)
+    | X86.Ind1 _ -> raise (Error ("Direct memory address with a literal address is not supported.", Some pos)) 
+    | X86.Ind2 r -> Addr (Int64.to_int !(resolve_register machine r pos))
+    | X86.Ind3 (imm, r) ->
+        let offset = 
+            match resolve_immediate machine imm pos with
+            | Lit n -> n
+            | Addr addr -> bits_to_int64 (load_64bits_from_memory machine.memory addr (Some pos))
+            | _ -> raise InternalError
         in
-        List.iter add_data_decl data
-    in
-    let add_elem {X86.lbl; X86.asm; _} =
-        match asm with
-        | X86.Text instrs -> add_text_block lbl instrs
-        | X86.Data data -> add_data_block lbl data
-    in
-    let initialize_machine prg = List.iter add_elem prg in
-    initialize_machine prog;
-    let inital_rip = 
-        match LabelMap.find_opt entry_point !prg_lbls with
-        | None -> raise (ErrorInitializingMachine ("Invalid Entry point: \"" ^ entry_point ^ "\"", None))
-        | Some i -> i
-    in
-    let ms =
-      {rip = ref inital_rip; rax = ref 0L; rbx = ref 0L; rcx = ref 0L; rdx = ref 0L; rsi = ref 0L; rdi = ref 0L;
-       rbp = ref 0L; rsp = ref inital_stack_pointer; r8 = ref 0L; r9 = ref 0L; r10 = ref 0L; r11 = ref 0L; r12 = ref 0L;
-       r13 = ref 0L; r14 = ref 0L; r15 = ref 0L;
-       flag_OF = ref false; flag_SF = ref false; flag_ZF = ref false; flag_CF = ref false;
-       flag_PF = ref false;
-       heap_boundary = !least_free_address;
-       stack_boundary = last_stack_address;
-       mode = ref Normal;
-       memory = mem;
-       prog = Array.of_list (List.rev !prg_list);
-       prog_labels = !prg_lbls;
-       data_labels = !data_lbls}
-    in
-    if ms.heap_boundary > ms.stack_boundary then raise (ErrorInitializingMachine ("The heap and can stack overlap in the constructed machine.", None));
-    ms
+        match r with
+        | X86.Rip -> Addr (Int64.to_int offset)
+        | _ -> Addr (Int64.to_int (Int64.add !(resolve_register machine r pos) offset))
 
-let execute_moveq _ _ _ =
-    ()
+let execute_moveq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Movq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r -> r := n
+    | Lit n, Addr a -> store_64bits_to_memory machine.memory a (int64_to_bits n) (Some pos)
+    | _, Lit _ -> raise (Error ("The destination of a Movq operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d -> d := !s
+    | Reg r, Addr a -> store_64bits_to_memory machine.memory a (int64_to_bits !r) (Some pos)
+    | Addr a, Reg r -> r := bits_to_int64 (load_64bits_from_memory machine.memory a (Some pos))
+    | Addr _, Addr _ -> raise (Error ("Movq operation does not support moving from memory to memory.", Some pos))
 
-let execute_pushq _ _ _ =
-    ()
+let execute_pushq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Pushq operation expects exacly 1 operand.", Some pos))
+    in
+    machine.rsp := Int64.sub !(machine.rsp) 8L;
+    let rsp = Int64.to_int !(machine.rsp) in
+    if rsp < machine.stack_boundary then raise (Error ("Stack overflow occured.", Some pos));
+    match arg with
+    | Lit n -> store_64bits_to_memory machine.memory rsp (int64_to_bits n) (Some pos)
+    | Reg r -> store_64bits_to_memory machine.memory rsp (int64_to_bits !r) (Some pos)
+    | Addr a -> 
+        let bits_to_push = load_64bits_from_memory machine.memory a (Some pos) in
+        store_64bits_to_memory machine.memory rsp bits_to_push (Some pos)
     
-let execute_popq _ _ _ =
-    ()
-let execute_leaq _ _ _ =
-    ()
+let execute_popq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Popq operation expects exacly 1 operand.", Some pos))
+    in
+    if (Int64.to_int !(machine.rsp)) > (Memory.dim machine.memory) - 8 then raise (Error ("Program attempted top pop while the stack does not have enough data.", Some pos));
+    let rsp = Int64.to_int !(machine.rsp) in
+    (match arg with
+    | Lit _ -> raise (Error ("The destination of the Popq operation cannot be a literal number.", Some pos))
+    | Reg r -> r := bits_to_int64 (load_64bits_from_memory machine.memory rsp (Some pos))
+    | Addr a -> 
+        let bits_to_push = load_64bits_from_memory machine.memory rsp (Some pos) in
+        store_64bits_to_memory machine.memory a bits_to_push (Some pos));
+    machine.rsp := Int64.add !(machine.rsp) 8L
+
+let execute_leaq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Leaq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Addr a, Reg r -> r := Int64.of_int a
+    | _, _ -> raise (Error ("The arguemtns to Leaq must consist of a memory address (source) and a register (destination).", Some pos))
 
 let execute_incq _ _ _ =
     ()
@@ -241,8 +189,19 @@ let execute_decq _ _ _ =
 let execute_negq _ _ _ =
     ()
     
-let execute_notq _ _ _ =
-    ()
+let execute_notq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Notq operation expects exacly 1 operand.", Some pos))
+    in
+    (match arg with
+    | Lit _ -> raise (Error ("The destination of the notq operation cannot be a literal number.", Some pos))
+    | Reg r -> let bits = int64_to_bits !r in Binops.bits_not bits machine.flags; r := bits_to_int64 bits
+    | Addr a -> 
+        let bits = load_64bits_from_memory machine.memory a (Some pos) in
+        Binops.bits_not bits machine.flags;
+        store_64bits_to_memory machine.memory a bits (Some pos))
 
 let execute_addq _ _ _ =
     ()
@@ -293,33 +252,36 @@ let execute_idivq _ _ _ =
     ()
     
 let decode_and_execute machine instr =
+    let step_rip () =
+        machine.rip := !(machine.rip) + 1
+    in
     let (opcode, args, pos) = instr in
     match opcode with
-    | X86.Movq -> execute_moveq machine args pos
-    | X86.Pushq -> execute_pushq machine args pos
-    | X86.Popq -> execute_popq machine args pos
-    | X86.Leaq -> execute_leaq machine args pos
-    | X86.Incq -> execute_incq machine args pos
-    | X86.Decq -> execute_decq machine args pos
-    | X86.Negq -> execute_negq machine args pos
-    | X86.Notq -> execute_notq machine args pos
-    | X86.Addq -> execute_addq machine args pos
-    | X86.Subq -> execute_subq machine args pos
-    | X86.Imulq -> execute_imulq machine args pos
-    | X86.Xorq -> execute_xorq machine args pos
-    | X86.Orq -> execute_orq machine args pos
-    | X86.Andq -> execute_andq machine args pos
-    | X86.Shlq -> execute_shlq machine args pos
-    | X86.Sarq -> execute_sarq machine args pos
-    | X86.Shrq -> execute_shrq machine args pos
-    | X86.Jmp -> execute_jump machine None args pos
-    | X86.J cnd -> execute_jump machine (Some cnd) args pos
-    | X86.Cmpq -> execute_cmpq machine args pos
-    | X86.Set cnd -> execute_set machine (Some cnd) args pos
-    | X86.Callq -> execute_callq machine args pos
-    | X86.Retq -> execute_retq machine args pos
-    | X86.Cqto -> execute_cqto machine args pos
-    | X86.Idivq -> execute_idivq machine args pos
+    | X86.Movq -> execute_moveq machine args pos; step_rip ()
+    | X86.Pushq -> execute_pushq machine args pos; step_rip ()
+    | X86.Popq -> execute_popq machine args pos; step_rip ()
+    | X86.Leaq -> execute_leaq machine args pos; step_rip ()
+    | X86.Incq -> execute_incq machine args pos; step_rip ()
+    | X86.Decq -> execute_decq machine args pos; step_rip ()
+    | X86.Negq -> execute_negq machine args pos; step_rip ()
+    | X86.Notq -> execute_notq machine args pos; step_rip ()
+    | X86.Addq -> execute_addq machine args pos; step_rip ()
+    | X86.Subq -> execute_subq machine args pos; step_rip ()
+    | X86.Imulq -> execute_imulq machine args pos; step_rip ()
+    | X86.Xorq -> execute_xorq machine args pos; step_rip ()
+    | X86.Orq -> execute_orq machine args pos; step_rip ()
+    | X86.Andq -> execute_andq machine args pos; step_rip ()
+    | X86.Shlq -> execute_shlq machine args pos; step_rip ()
+    | X86.Sarq -> execute_sarq machine args pos; step_rip ()
+    | X86.Shrq -> execute_shrq machine args pos; step_rip ()
+    | X86.Jmp -> execute_jump machine None args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.J cnd -> execute_jump machine (Some cnd) args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.Cmpq -> execute_cmpq machine args pos; step_rip ()
+    | X86.Set cnd -> execute_set machine (Some cnd) args pos; step_rip ()
+    | X86.Callq -> execute_callq machine args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.Retq -> execute_retq machine args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.Cqto -> execute_cqto machine args pos; step_rip ()
+    | X86.Idivq -> execute_idivq machine args pos; step_rip ()
     | X86.Comment _ -> raise InternalError
     
 let take_step machine =
@@ -328,7 +290,78 @@ let take_step machine =
     | Normal ->
         let cur_rip = !(machine.rip) in
         if (0 <= cur_rip && cur_rip < Array.length machine.prog) then
-            decode_and_execute machine (machine.prog.(cur_rip))
+            begin
+                try decode_and_execute machine (machine.prog.(cur_rip)) with
+                | ex -> machine.mode := ExceptionHasOccured; raise ex
+            end
         else
+            begin
             machine.mode := ExceptionHasOccured;
-            raise (SegFault "Rip register is pointing outside the text section!")
+            raise (Error ("Rip register is pointing outside the text section. The rip is " ^(string_of_int cur_rip) ^ " while the program consists of " ^ (string_of_int (Array.length machine.prog)) ^ "instructions.", None))
+            end
+
+(* Creates a machine and loads the X86 program. *)
+let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog) (entry_point : string) : machine =
+    (* Adjust address_bits to between 16 and 26 bits, i.e., 64 KB to 64 MB. *)
+    let address_bits_adjusted = if address_bits < 16 then 16 else if address_bits > 26 then 26 else address_bits in
+    let memory_size = 1 lsl address_bits_adjusted in
+    let inital_stack_pointer = Int64.of_int memory_size in
+    (* Adjust address_bits to between 10 and 16 bits, i.e., 1 KB to 64 KB. *)
+    let stack_size_bits_adjusted = if stack_size_bits < 10 then 10 else if stack_size_bits > 16 then 16 else stack_size_bits in
+    let last_stack_address = memory_size - (1 lsl stack_size_bits_adjusted) in
+    let mem = Memory.create Bigarray.Int8_unsigned Bigarray.c_layout memory_size in
+    let prg_list = ref [] in
+    let prg_lbls = ref LabelMap.empty in
+    let data_lbls = ref LabelMap.empty in
+    let least_free_address = ref 0 in
+    let add_text_block lbl instrs =
+        prg_lbls := LabelMap.add lbl (List.length !prg_list) !prg_lbls;
+        prg_list := List.rev_append instrs !prg_list
+    in
+    let add_data_block lbl data =
+        data_lbls := LabelMap.add lbl !least_free_address !data_lbls;
+        let add_data_decl dt =
+            match dt with
+            | X86.Quad (X86.Lit n, _) ->
+                begin
+                    let offset = !least_free_address in
+                    least_free_address := offset + 8;
+                    store_64bits_to_memory mem offset (int64_to_bits n) None
+                end
+            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported", Some pos))
+            | X86.Asciz (s, _) ->
+                let offset = !least_free_address in
+                least_free_address := offset + (String.length s + 1);
+                String.iteri (fun i c -> Memory.set mem (offset + i) (Char.code c)) s;
+                Memory.set mem (offset + String.length s) 0
+        in
+        List.iter add_data_decl data
+    in
+    let add_elem {X86.lbl; X86.asm; _} =
+        match asm with
+        | X86.Text instrs -> add_text_block lbl instrs
+        | X86.Data data -> add_data_block lbl data
+    in
+    let initialize_machine prg = List.iter add_elem prg in
+    initialize_machine prog;
+    let inital_rip = 
+        match LabelMap.find_opt entry_point !prg_lbls with
+        | None -> raise (ErrorInitializingMachine ("Invalid Entry point: \"" ^ entry_point ^ "\"", None))
+        | Some i -> i
+    in
+    let ms =
+      {rip = ref inital_rip; rax = ref 0L; rbx = ref 0L; rcx = ref 0L; rdx = ref 0L; rsi = ref 0L; rdi = ref 0L;
+       rbp = ref 0L; rsp = ref inital_stack_pointer; r8 = ref 0L; r9 = ref 0L; r10 = ref 0L; r11 = ref 0L; r12 = ref 0L;
+       r13 = ref 0L; r14 = ref 0L; r15 = ref 0L;
+       flags = make_flags ();
+       heap_boundary = !least_free_address;
+       stack_boundary = last_stack_address;
+       mode = ref Normal;
+       memory = mem;
+       prog = Array.of_list (List.rev !prg_list);
+       prog_labels = !prg_lbls;
+       data_labels = !data_lbls}
+    in
+    if ms.heap_boundary > ms.stack_boundary then raise (ErrorInitializingMachine ("The heap and can stack overlap in the constructed machine.", None));
+    execute_pushq ms [X86.Imm (X86.Lit (Int64.of_int (memory_size + 1024)))] Lexing.dummy_pos;
+    ms

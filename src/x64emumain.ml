@@ -1,5 +1,6 @@
 open Lexing
 
+module Binops = Binops
 module Machine = Machine
 module X86 = X86
 
