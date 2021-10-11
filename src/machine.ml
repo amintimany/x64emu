@@ -3,11 +3,13 @@ module LabelMap = Map.Make(String)
 
 type memory = (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Memory.t
 
-type segfault = BadJump
-
-type machine_mode = Normal | ExceptionHasOccured | SegFault of segfault
+type machine_mode = Normal | ExceptionHasOccured
 
 exception ErrorInitializingMachine of string * Lexing.position option
+
+exception InternalError
+
+exception SegFault of string
 
 type machine = {
 (* The rip register. This is a special register in our implementation. It cannot be directly read or written to.
@@ -218,3 +220,115 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
     in
     if ms.heap_boundary > ms.stack_boundary then raise (ErrorInitializingMachine ("The heap and can stack overlap in the constructed machine.", None));
     ms
+
+let execute_moveq _ _ _ =
+    ()
+
+let execute_pushq _ _ _ =
+    ()
+    
+let execute_popq _ _ _ =
+    ()
+let execute_leaq _ _ _ =
+    ()
+
+let execute_incq _ _ _ =
+    ()
+    
+let execute_decq _ _ _ =
+    ()
+
+let execute_negq _ _ _ =
+    ()
+    
+let execute_notq _ _ _ =
+    ()
+
+let execute_addq _ _ _ =
+    ()
+    
+let execute_subq _ _ _ =
+    ()
+
+let execute_imulq _ _ _ =
+    ()
+
+let execute_xorq _ _ _ =
+    ()
+
+let execute_orq _ _ _ =
+    ()
+    
+let execute_andq _ _ _ =
+    ()
+
+let execute_shlq _ _ _ =
+    ()
+
+let execute_sarq _ _ _ =
+    ()
+
+let execute_shrq _ _ _ =
+    ()
+
+let execute_jump _ _ _ _ =
+    ()
+
+let execute_cmpq _ _ _ =
+    ()
+
+let execute_set _ _ _ _ =
+    ()
+
+let execute_callq _ _ _ =
+    ()
+
+let execute_retq _ _ _ =
+    ()
+
+let execute_cqto _ _ _ =
+    ()
+
+let execute_idivq _ _ _ =
+    ()
+    
+let decode_and_execute machine instr =
+    let (opcode, args, pos) = instr in
+    match opcode with
+    | X86.Movq -> execute_moveq machine args pos
+    | X86.Pushq -> execute_pushq machine args pos
+    | X86.Popq -> execute_popq machine args pos
+    | X86.Leaq -> execute_leaq machine args pos
+    | X86.Incq -> execute_incq machine args pos
+    | X86.Decq -> execute_decq machine args pos
+    | X86.Negq -> execute_negq machine args pos
+    | X86.Notq -> execute_notq machine args pos
+    | X86.Addq -> execute_addq machine args pos
+    | X86.Subq -> execute_subq machine args pos
+    | X86.Imulq -> execute_imulq machine args pos
+    | X86.Xorq -> execute_xorq machine args pos
+    | X86.Orq -> execute_orq machine args pos
+    | X86.Andq -> execute_andq machine args pos
+    | X86.Shlq -> execute_shlq machine args pos
+    | X86.Sarq -> execute_sarq machine args pos
+    | X86.Shrq -> execute_shrq machine args pos
+    | X86.Jmp -> execute_jump machine None args pos
+    | X86.J cnd -> execute_jump machine (Some cnd) args pos
+    | X86.Cmpq -> execute_cmpq machine args pos
+    | X86.Set cnd -> execute_set machine (Some cnd) args pos
+    | X86.Callq -> execute_callq machine args pos
+    | X86.Retq -> execute_retq machine args pos
+    | X86.Cqto -> execute_cqto machine args pos
+    | X86.Idivq -> execute_idivq machine args pos
+    | X86.Comment _ -> raise InternalError
+    
+let take_step machine =
+    match !(machine.mode) with
+    | ExceptionHasOccured -> ()
+    | Normal ->
+        let cur_rip = !(machine.rip) in
+        if (0 <= cur_rip && cur_rip < Array.length machine.prog) then
+            decode_and_execute machine (machine.prog.(cur_rip))
+        else
+            machine.mode := ExceptionHasOccured;
+            raise (SegFault "Rip register is pointing outside the text section!")
