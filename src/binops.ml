@@ -2,6 +2,8 @@ type flags = { flag_OF : bool ref; flag_SF : bool ref; flag_ZF : bool ref; flag_
 
 let make_flags () = { flag_OF = ref false; flag_SF  = ref false; flag_ZF  = ref false; flag_CF  = ref false; flag_PF = ref false; }
 
+let dummy_flags = make_flags ()
+
 let int64_to_bits (n : int64) : bool array =
     let res = Array.init 64 (fun _ -> false) in
     let rec int64_to_bits_aux i (mask : int64) =
@@ -92,10 +94,54 @@ let bits_not b flags =
     let rec loop i =
         if i >= Array.length b then () else
         begin
-            b.(i) <- not b.(i); loop (i + 1)
+            b.(i) <- not b.(i);
+            loop (i + 1)
         end
     in
     loop 0;
     flags.flag_OF := false;
     flags.flag_CF := false;
     calculate_static_flags b flags
+
+let bits_bin_log_op b1 b2 b3 f flags =
+    assert (Array.length b1 = Array.length b2);
+    assert (Array.length b1 = Array.length b3);
+    let rec loop i =
+        if i >= Array.length b1 then () else
+        begin
+            b3.(i) <- f b1.(i) b2.(i);
+            loop (i + 1)
+        end
+    in
+    loop 0;
+    flags.flag_OF := false;
+    flags.flag_CF := false;
+    calculate_static_flags b3 flags
+    
+
+let bits_add b1 b2 b3 flags =
+    assert (Array.length b1 = Array.length b2);
+    assert (Array.length b1 = Array.length b3);
+    let same_sign =
+        b1.(Array.length b1 - 1) = b2.(Array.length b2 - 1)
+    in
+    let b1signbit = b1.(Array.length b1 - 1) in
+    flags.flag_CF := false;
+    let rec loop i =
+        if i >= Array.length b1 then () else
+        begin
+            (match b1.(i), b2.(i), !(flags.flag_CF) with
+            | true, true, true -> b3.(i) <- true
+            | true, true, false
+            | true, false, true
+            | false, true, true -> b3.(i) <- false; flags.flag_CF := true
+            | true, false, false
+            | false, true, false
+            | false, false, true -> b3.(i) <- true; flags.flag_CF := false
+            | false, false, false -> b3.(i) <- false);
+            loop (i + 1)
+        end;
+    in
+    loop 0;
+    flags.flag_CF := same_sign && b1signbit != b3.(Array.length b3 - 1);
+    calculate_static_flags b3 flags

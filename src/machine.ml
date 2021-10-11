@@ -113,17 +113,24 @@ let resolve_operand machine operand pos =
     | X86.Ind1 _ -> raise (Error ("Direct memory address with a literal address is not supported.", Some pos)) 
     | X86.Ind2 r -> Addr (Int64.to_int !(resolve_register machine r pos))
     | X86.Ind3 (imm, r) ->
-        let offset = 
-            match resolve_immediate machine imm pos with
-            | Lit n -> n
-            | Addr addr -> bits_to_int64 (load_64bits_from_memory machine.memory addr (Some pos))
-            | _ -> raise InternalError
-        in
-        match r with
-        | X86.Rip -> Addr (Int64.to_int offset)
-        | _ -> Addr (Int64.to_int (Int64.add !(resolve_register machine r pos) offset))
+        (match resolve_immediate machine imm pos with
+        | Lit n ->
+            begin
+                match r with
+                | X86.Rip -> raise (Error ("rip-relative adderssing is not supported with a literal number as offset.", Some pos)) 
+                | _ -> Addr (Int64.to_int (Int64.add !(resolve_register machine r pos) n))
+            end
+        | Addr addr ->
+            begin
+                match r with
+                | X86.Rip -> Addr addr
+                | _ -> 
+                    let offset = bits_to_int64 (load_64bits_from_memory machine.memory addr (Some pos)) in
+                    Addr (Int64.to_int (Int64.add !(resolve_register machine r pos) offset))
+            end;
+        | _ -> raise InternalError)
 
-let execute_moveq machine args pos =
+let execute_movq machine args pos =
     let left_arg, right_arg =
         match args with
         | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
@@ -180,46 +187,204 @@ let execute_leaq machine args pos =
     | Addr a, Reg r -> r := Int64.of_int a
     | _, _ -> raise (Error ("The arguemtns to Leaq must consist of a memory address (source) and a register (destination).", Some pos))
 
-let execute_incq _ _ _ =
-    ()
+let execute_incq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Incq operation expects exacly 1 operand.", Some pos))
+    in
+    let bits_for_one = int64_to_bits 1L in
+    (match arg with
+    | Lit _ -> raise (Error ("The destination of the Incq operation cannot be a literal number.", Some pos))
+    | Reg r -> 
+        let bits = int64_to_bits !r in
+        Binops.bits_add bits bits_for_one bits machine.flags;
+        r := bits_to_int64 bits
+    | Addr a -> 
+        let bits = load_64bits_from_memory machine.memory a (Some pos) in
+        Binops.bits_add bits bits_for_one bits machine.flags;
+        store_64bits_to_memory machine.memory a bits (Some pos))
     
-let execute_decq _ _ _ =
-    ()
+let execute_decq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Incq operation expects exacly 1 operand.", Some pos))
+    in
+    let bits_for_one = int64_to_bits 1L in
+    let bits_for_minus_one = int64_to_bits 1L in
+    Binops.bits_not bits_for_minus_one machine.flags;
+    Binops.bits_add bits_for_minus_one bits_for_one bits_for_minus_one machine.flags;
+    (match arg with
+    | Lit _ -> raise (Error ("The destination of the Incq operation cannot be a literal number.", Some pos))
+    | Reg r -> 
+        let bits = int64_to_bits !r in
+        Binops.bits_add bits bits_for_minus_one bits machine.flags;
+        r := bits_to_int64 bits
+    | Addr a -> 
+        let bits = load_64bits_from_memory machine.memory a (Some pos) in
+        Binops.bits_add bits bits_for_minus_one bits machine.flags;
+        store_64bits_to_memory machine.memory a bits (Some pos))
 
-let execute_negq _ _ _ =
-    ()
+let execute_negq machine args pos =
+    let arg =
+        match args with
+        | [a] -> (resolve_operand machine a pos)
+        | _ -> raise (Error ("Negq operation expects exacly 1 operand.", Some pos))
+    in
+    let bits_for_one = int64_to_bits 1L in
+    (match arg with
+    | Lit _ -> raise (Error ("The destination of the negq operation cannot be a literal number.", Some pos))
+    | Reg r -> 
+        let bits = int64_to_bits !r in Binops.bits_not bits machine.flags;
+        Binops.bits_add bits bits_for_one bits machine.flags;
+        r := bits_to_int64 bits
+    | Addr a -> 
+        let bits = load_64bits_from_memory machine.memory a (Some pos) in Binops.bits_not bits machine.flags;
+        Binops.bits_add bits bits_for_one bits machine.flags;
+        store_64bits_to_memory machine.memory a bits (Some pos))
     
 let execute_notq machine args pos =
     let arg =
         match args with
-        | [a] -> (resolve_operand machine a pos)
+        | [a] -> resolve_operand machine a pos
         | _ -> raise (Error ("Notq operation expects exacly 1 operand.", Some pos))
     in
-    (match arg with
+    match arg with
     | Lit _ -> raise (Error ("The destination of the notq operation cannot be a literal number.", Some pos))
     | Reg r -> let bits = int64_to_bits !r in Binops.bits_not bits machine.flags; r := bits_to_int64 bits
     | Addr a -> 
         let bits = load_64bits_from_memory machine.memory a (Some pos) in
         Binops.bits_not bits machine.flags;
-        store_64bits_to_memory machine.memory a bits (Some pos))
+        store_64bits_to_memory machine.memory a bits (Some pos)
 
-let execute_addq _ _ _ =
-    ()
+let execute_addq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Addq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_src = int64_to_bits n in
+        let bits_dest = int64_to_bits !r in
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Lit n, Addr a -> 
+        let bits_src = int64_to_bits n in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | _, Lit _ -> raise (Error ("The destination of addq operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d ->
+        let bits_src = int64_to_bits !s in
+        let bits_dest = int64_to_bits !d in
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        d := bits_to_int64 bits_dest
+    | Reg r, Addr a ->
+        let bits_src = int64_to_bits !r in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | Addr a, Reg r ->
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits !r in
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Addr _, Addr _ -> raise (Error ("Addq operation does not support two memory operands.", Some pos))
     
-let execute_subq _ _ _ =
-    ()
+let execute_subq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Subq operation expects exacly 2 operands.", Some pos))
+    in
+    let bits_for_one = int64_to_bits 1L in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_src = int64_to_bits n in
+        let bits_dest = int64_to_bits !r in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Lit n, Addr a -> 
+        let bits_src = int64_to_bits n in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | _, Lit _ -> raise (Error ("The destination of subq operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d ->
+        let bits_src = int64_to_bits !s in
+        let bits_dest = int64_to_bits !d in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        d := bits_to_int64 bits_dest
+    | Reg r, Addr a ->
+        let bits_src = int64_to_bits !r in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | Addr a, Reg r ->
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits !r in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Addr _, Addr _ -> raise (Error ("Subq operation does not support two memory operands.", Some pos))
 
 let execute_imulq _ _ _ =
     ()
 
-let execute_xorq _ _ _ =
-    ()
+let execute_bin_log f machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Binary logical operations expect exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_src = int64_to_bits n in
+        let bits_dest = int64_to_bits !r in
+        bits_bin_log_op bits_src bits_dest bits_dest f machine.flags;
+        r := bits_to_int64 bits_dest
+    | Lit n, Addr a -> 
+        let bits_src = int64_to_bits n in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_bin_log_op bits_src bits_dest bits_dest f machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | _, Lit _ -> raise (Error ("The destination of a binary logical operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d ->
+        let bits_src = int64_to_bits !s in
+        let bits_dest = int64_to_bits !d in
+        bits_bin_log_op bits_src bits_dest bits_dest f machine.flags;
+        d := bits_to_int64 bits_dest
+    | Reg r, Addr a ->
+        let bits_src = int64_to_bits !r in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_bin_log_op bits_src bits_dest bits_dest f machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | Addr a, Reg r ->
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits !r in
+        bits_bin_log_op bits_src bits_dest bits_dest f machine.flags;
+        r := bits_to_int64 bits_dest
+    | Addr _, Addr _ -> raise (Error ("Binary logical operations do not support two memory operands.", Some pos))
 
-let execute_orq _ _ _ =
-    ()
+let execute_xorq machine args pos =
+    execute_bin_log (fun b1 b2 -> b1 <> b2) machine args pos
+
+let execute_orq machine args pos =
+    execute_bin_log (fun b1 b2 -> b1 || b2) machine args pos
     
-let execute_andq _ _ _ =
-    ()
+let execute_andq machine args pos =
+    execute_bin_log (fun b1 b2 -> b1 && b2) machine args pos
 
 let execute_shlq _ _ _ =
     ()
@@ -230,14 +395,69 @@ let execute_sarq _ _ _ =
 let execute_shrq _ _ _ =
     ()
 
+    
+let execute_cmpq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Cmpq operation expects exacly 2 operands.", Some pos))
+    in
+    let bits_for_one = int64_to_bits 1L in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_src = int64_to_bits n in
+        let bits_dest = int64_to_bits !r in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags
+    | Lit n, Addr a -> 
+        let bits_src = int64_to_bits n in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags
+    | _, Lit _ -> raise (Error ("The destination of cmpq operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d ->
+        let bits_src = int64_to_bits !s in
+        let bits_dest = int64_to_bits !d in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags
+    | Reg r, Addr a ->
+        let bits_src = int64_to_bits !r in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags
+    | Addr a, Reg r ->
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits !r in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags
+    | Addr _, Addr _ -> raise (Error ("Cmpq operation does not support two memory operands.", Some pos))
+
+let check_cond machine cnd =
+    match cnd with
+    | X86.Eq -> !(machine.flags.flag_ZF)
+    | X86.Neq -> not !(machine.flags.flag_ZF)
+    | X86.Gt -> (not !(machine.flags.flag_ZF)) && (machine.flags.flag_SF = machine.flags.flag_OF)
+    | X86.Ge -> machine.flags.flag_SF = machine.flags.flag_OF
+    | X86.Lt -> machine.flags.flag_SF <> machine.flags.flag_OF
+    | X86.Le -> !(machine.flags.flag_ZF) || (machine.flags.flag_SF <> machine.flags.flag_OF)
+
 let execute_jump _ _ _ _ =
     ()
-
-let execute_cmpq _ _ _ =
-    ()
-
-let execute_set _ _ _ _ =
-    ()
+let execute_set cnd machine args pos =
+    let arg = 
+        match args with
+        | [a] -> resolve_operand machine a pos
+        | _ -> raise (Error ("Set operations expect exacly 1 operands.", Some pos))
+    in
+    match arg with
+    | Lit _ -> raise (Error ("The destination of a set operation cannot be a literal number.", Some pos))
+    | Reg _ -> raise (Error ("The destination of a set operation cannot be a 64 bit register; the result is a single byte. This operation just sets the byte to 1 if the condition holds and otherwise to 0.", Some pos))
+    | Addr a -> if check_cond machine cnd then Memory.set machine.memory a 1 else Memory.set machine.memory a 0
 
 let execute_callq _ _ _ =
     ()
@@ -257,7 +477,7 @@ let decode_and_execute machine instr =
     in
     let (opcode, args, pos) = instr in
     match opcode with
-    | X86.Movq -> execute_moveq machine args pos; step_rip ()
+    | X86.Movq -> execute_movq machine args pos; step_rip ()
     | X86.Pushq -> execute_pushq machine args pos; step_rip ()
     | X86.Popq -> execute_popq machine args pos; step_rip ()
     | X86.Leaq -> execute_leaq machine args pos; step_rip ()
@@ -277,7 +497,7 @@ let decode_and_execute machine instr =
     | X86.Jmp -> execute_jump machine None args pos (* jump/call/return operations set the rip appropriately. *)
     | X86.J cnd -> execute_jump machine (Some cnd) args pos (* jump/call/return operations set the rip appropriately. *)
     | X86.Cmpq -> execute_cmpq machine args pos; step_rip ()
-    | X86.Set cnd -> execute_set machine (Some cnd) args pos; step_rip ()
+    | X86.Set cnd -> execute_set cnd machine args pos; step_rip ()
     | X86.Callq -> execute_callq machine args pos (* jump/call/return operations set the rip appropriately. *)
     | X86.Retq -> execute_retq machine args pos (* jump/call/return operations set the rip appropriately. *)
     | X86.Cqto -> execute_cqto machine args pos; step_rip ()
