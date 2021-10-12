@@ -200,15 +200,15 @@ let make_program_display_for_machine doc machine x64emu_program_table =
   let res = Array.mapi make_instr machine.Machine.prog in
   Machine.LabelMap.iter (fun lbl addr -> let (_, td) = res.(addr) in td##.innerHTML := Js.string lbl) (machine.Machine.prog_labels);
   let last_rip = ref !(machine.Machine.rip) in
-  let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
+  (* let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in *)
   let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
-  let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in
+  (* let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in *)
   let update_table_active num = 
     ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label !last_rip)); Js.Unsafe.inject (Js.bool false)|]);
     ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
     last_rip := num;
   in
-  (fun () -> update_table_active !(machine.Machine.rip); bring_to_view !(machine.Machine.rip))
+  (fun () -> update_table_active !(machine.Machine.rip); (* bring_to_view !(machine.Machine.rip) *) ())
 
 let make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_flags_table x64emu_heap_table x64emu_stack_table =
   let register_update = make_register_display_for_machine doc machine x64emu_register_table in
