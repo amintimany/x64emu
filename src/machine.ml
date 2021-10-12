@@ -567,12 +567,38 @@ let execute_imulq machine args pos =
         r := bits_to_int64 bits_dest
     | Addr _, Addr _ -> raise (Error ("Imulq operation does not support two memory operands.", Some pos))
 
-let execute_cqto _ _ _ =
-    ()
+let execute_cqto machine args pos =
+    (match args with
+    | [] -> ()
+    | _ -> raise (Error ("Cqto operation expects exacly 0 operands.", Some pos)));
+    let bits = int64_to_bits !(machine.rax) in
+    let msb = bits.(Array.length bits - 1) in
+    let bits_rdx = Array.map (fun _ -> msb) bits in
+    machine.rdx := bits_to_int64 bits_rdx
 
-let execute_idivq _ _ _ =
-    ()
+let execute_idivq machine args pos =
+    let arg =
+        match args with
+        | [a] -> resolve_operand machine a pos
+        | _ -> raise (Error ("Notq operation expects exacly 1 operand.", Some pos))
+    in
+    let divisor =
+        match arg with
+        | Lit _ -> raise (Error ("The source of the idivq operation cannot be a literal number.", Some pos))
+        | Reg r -> Big_int.big_int_of_int64 !r
+        | Addr a -> Big_int.big_int_of_int64 (bits_to_int64 (load_64bits_from_memory machine.memory a (Some pos)))
+    in
+    let dividend = Big_int.add_big_int (Big_int.shift_left_big_int (Big_int.big_int_of_int64 !(machine.rdx)) 64) (Big_int.big_int_of_int64 !(machine.rax)) in
+    try
+        let (bq, br) = Big_int.quomod_big_int dividend divisor in
+        match Big_int.int64_of_big_int_opt bq, Big_int.int64_of_big_int_opt br with
+        | Some q, Some r -> machine.rax := q; machine.rdx := r
+        | _, _ -> raise (Error ("Division overflow.", Some pos))
+    with
+    |Division_by_zero -> raise (Error ("Division by zero.", Some pos))
+
     
+        
 let decode_and_execute machine instr =
     let step_rip () =
         machine.rip := !(machine.rip) + 1

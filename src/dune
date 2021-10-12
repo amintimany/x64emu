@@ -1,6 +1,6 @@
 (library
  (name x64emumain)
- (libraries stdio js_of_ocaml))
+ (libraries stdio js_of_ocaml num))
 
 (ocamllex lexer)
 
