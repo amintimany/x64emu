@@ -532,8 +532,40 @@ let execute_retq machine args pos =
     | _ -> raise (Error ("Callq operation expects exacly 0 operands.", Some pos)));
     machine.rip := Int64.to_int (bits_to_int64 (perform_pop machine pos))
 
-let execute_imulq _ _ _ =
-    ()
+let execute_imulq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Imulq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_src = int64_to_bits n in
+        let bits_dest = int64_to_bits !r in
+        signed_mul bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Lit n, Addr a -> 
+        let bits_src = int64_to_bits n in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        signed_mul bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | _, Lit _ -> raise (Error ("The destination of imulq operation cannot be a literal number.", Some pos))
+    | Reg s, Reg d ->
+        let bits_src = int64_to_bits !s in
+        let bits_dest = int64_to_bits !d in
+        signed_mul bits_src bits_dest bits_dest machine.flags;
+        d := bits_to_int64 bits_dest
+    | Reg r, Addr a ->
+        let bits_src = int64_to_bits !r in
+        let bits_dest = (load_64bits_from_memory machine.memory a (Some pos)) in
+        signed_mul bits_src bits_dest bits_dest machine.flags;
+        store_64bits_to_memory machine.memory a bits_dest (Some pos)
+    | Addr a, Reg r ->
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits !r in
+        signed_mul bits_src bits_dest bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | Addr _, Addr _ -> raise (Error ("Imulq operation does not support two memory operands.", Some pos))
 
 let execute_cqto _ _ _ =
     ()

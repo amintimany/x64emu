@@ -146,7 +146,7 @@ let bits_add b1 b2 b3 flags =
 let shift_left n b flags =
     let set_to_zero () =
         let rec loop i =
-            if i >= Array.length b then () else
+            if i = Array.length b then () else
             begin
                 b.(i) <- false;
                 loop (i + 1)
@@ -157,15 +157,15 @@ let shift_left n b flags =
     let shift_one () =
         flags.flag_CF := b.(Array.length b - 1); 
         let rec loop i =
-            if i >= Array.length b then () else
+            if i = -1 then () else
             begin
                 b.(i) <- if i = 0 then false else b.(i - 1);
-                loop (i + 1)
+                loop (i - 1)
             end;
         in
-        loop 0
+        loop (Array.length b - 1)
     in
-    if n > Array.length b then set_to_zero () else
+    if n >= Array.length b then set_to_zero () else
     begin
         let rec loop i =
             if i = 0 then () else
@@ -175,7 +175,7 @@ let shift_left n b flags =
         in
         loop n
     end;
-    if n = 1 then flags.flag_OF := b.(Array.length b) <> !(flags.flag_CF);
+    if n = 1 then flags.flag_OF := b.(Array.length b - 1) <> !(flags.flag_CF);
     calculate_static_flags b flags
 
 let shift_right n b flags =
@@ -250,7 +250,59 @@ let shift_right_arithmetic n b flags =
     if n = 1 then flags.flag_OF := false;
     calculate_static_flags b flags
 
-(* size of b3 must be the sum of the sizes of b1 and b2 *)
-(* let unsigned_mul b1 b2 b3 =
+(* this operation overwrites both b1 and b2. *)
+let unsigned_mul b1 b2 b3 flags =
     assert (Array.length b1 = Array.length b2);
-    assert (Array.length b1 = Array.length b3); *)
+    assert (Array.length b1 = Array.length b3);
+    let rec loop i =
+        if i = Array.length b2 then () else
+        begin
+             if b2.(i) then bits_add b1 b3 b3 flags;
+             shift_left 1 b1 flags;
+             loop (i + 1)
+        end
+    in
+    loop 0
+
+let signed_mul b1 b2 b3 flags =
+    assert (Array.length b1 = Array.length b2);
+    assert (Array.length b1 = Array.length b3);
+    let msb1 = b1.(Array.length b1 - 1) in
+    let msb2 = b2.(Array.length b2 - 1) in
+    let b1_big = Array.init (Array.length b1 * 2) (fun i -> if i < Array.length b1 then b1.(i) else msb1) in
+    let b2_big = Array.init (Array.length b2 * 2) (fun i -> if i < Array.length b2 then b2.(i) else msb2) in
+    let b3_big = Array.init (Array.length b3 * 2) (fun _ -> false) in
+    let one = Array.init (Array.length b1 * 2) (fun i -> if i = 0 then true else false) in
+    if msb1 then
+        begin
+            bits_not b1_big flags;
+            bits_add b1_big one b1_big flags
+        end;
+    if msb2 then
+        begin
+            bits_not b2_big flags;
+            bits_add b2_big one b2_big flags
+        end;
+    unsigned_mul b1_big b2_big b3_big flags;
+    if msb1 <> msb2 then
+        begin
+            bits_not b3_big flags;
+            bits_add b3_big one b3_big flags
+        end;
+    let rec copy_loop i =
+        if i = Array.length b3 then () else
+        begin
+            b3.(i) <- b3_big.(i); copy_loop (i + 1)
+        end
+    in
+    copy_loop 0;
+    let msb3 = b3.(Array.length b3 - 1) in
+    let rec check_loop i =
+        if i = Array.length b3_big then false else
+        begin
+            if b3_big.(i) <> msb3 then true else check_loop (i + 1)
+        end
+    in
+    let overflow = check_loop (Array.length b3) in
+    flags.flag_OF := overflow; flags.flag_CF := overflow;
+    calculate_static_flags b3 flags
