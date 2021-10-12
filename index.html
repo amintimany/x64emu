@@ -17,18 +17,11 @@
     <div class="container-fluid">
         <div class="mb-3 mt-3 col-10 mx-auto">
             <label class="form-label">Assembly source code:</label>
-            <pre style="height:70vh;" id="x64emu_the_code">
-                .text
-                _arith_main:
-                pushq	%rbp
-                movq	%rsp,	%rbp
-                movq	$20,	%rax
-                popq	%rbp
-                retq</pre>
+            <pre style="height:70vh;" id="x64emu_the_code"></pre>
             <div >
                 <div class="form-group col-2">
                     <label for="exampleInputEmail1" class="form-label mt-4">Entry point:</label>
-                    <input type="text" class="form-control" id="x64emu_entry_point" value="_arith_main">
+                    <input type="text" class="form-control" id="x64emu_entry_point">
                 </div>
                 <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
             </div>

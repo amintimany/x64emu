@@ -142,12 +142,16 @@ fun () ->
     end;
   Array.iter (fun upd -> upd ()) !update_funs
 
-let make_stack_cell_display doc address machine memory_table =
+let make_stack_cell_display =
+  let last_row = ref Js.null in
+  let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
+  fun doc address machine memory_table ->
   let tr = Html.createTr doc in
   let td_address = Html.createTd doc in
   let td_value = Html.createTd doc in
   Dom.appendChild tr td_address;
   Dom.appendChild tr td_value;
+  tr##.id := Js.string (make_tr_label address);
   let make_address (n : int) =
     Binops.int64_to_hex_string (Int64.of_int n)
   in
@@ -156,7 +160,7 @@ let make_stack_cell_display doc address machine memory_table =
   in
   td_address##.innerHTML := Js.string (make_address address);
   td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address));
-  Dom.appendChild memory_table tr;
+  Dom.insertBefore memory_table tr !last_row; last_row := Js.some tr;
   (fun () -> td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address)))
     
 let make_stack_display_for_machine doc display_limit machine x64emu_stack_table =
@@ -165,6 +169,14 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
   tr_head##.innerHTML := Js.string "<th>Address</th><th>Data</th>";
   Dom.appendChild x64emu_stack_table tr_head;
   let update_funs = ref [||] in
+  let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
+  let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
+  let last_rsp = ref (Int64.to_int !(machine.Machine.rsp)) in
+  let update_table_active num = 
+    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label !last_rsp)); Js.Unsafe.inject (Js.bool false)|]);
+    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
+    last_rsp := num;
+  in
   fun () ->
     let last_limit = !display_limit in
     let current_rsp = Int64.to_int !(machine.Machine.rsp) in
@@ -177,7 +189,7 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
         let newcells = Array.mapi (fun i _ -> make_stack_cell_display doc (last_limit - i - 1) machine x64emu_stack_table) tmp in
         update_funs := Array.concat [!update_funs; newcells]
       end;
-    Array.iter (fun upd -> upd ()) !update_funs
+    Array.iter (fun upd -> upd ()) !update_funs; update_table_active current_rsp
 
 
 let make_program_display_for_machine doc machine x64emu_program_table =
@@ -270,7 +282,7 @@ Html.handler (fun _ ->
     | Some ParsingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Parsing Error" err p)
     | Some LoadingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Error in loading the program" err p)
     | Some Ok machine ->
-      (x64emu_load_result##.innerHTML := Js.string (success_message));
+      (* (x64emu_load_result##.innerHTML := Js.string (success_message)); *)
       let update_display =
         make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_flags_table x64emu_heap_table x64emu_stack_table
       in
