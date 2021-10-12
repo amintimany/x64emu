@@ -145,37 +145,41 @@ let execute_movq machine args pos =
     | Addr a, Reg r -> r := bits_to_int64 (load_64bits_from_memory machine.memory a (Some pos))
     | Addr _, Addr _ -> raise (Error ("Movq operation does not support moving from memory to memory.", Some pos))
 
+let perform_push machine bits pos =
+    machine.rsp := Int64.sub !(machine.rsp) 8L;
+    let rsp = Int64.to_int !(machine.rsp) in
+    if rsp < machine.stack_boundary then raise (Error ("Stack overflow occured.", Some pos));
+    store_64bits_to_memory machine.memory rsp bits (Some pos)
+    
 let execute_pushq machine args pos =
     let arg =
         match args with
         | [a] -> (resolve_operand machine a pos)
         | _ -> raise (Error ("Pushq operation expects exacly 1 operand.", Some pos))
     in
-    machine.rsp := Int64.sub !(machine.rsp) 8L;
-    let rsp = Int64.to_int !(machine.rsp) in
-    if rsp < machine.stack_boundary then raise (Error ("Stack overflow occured.", Some pos));
     match arg with
-    | Lit n -> store_64bits_to_memory machine.memory rsp (int64_to_bits n) (Some pos)
-    | Reg r -> store_64bits_to_memory machine.memory rsp (int64_to_bits !r) (Some pos)
+    | Lit n -> perform_push machine (int64_to_bits n) pos
+    | Reg r -> perform_push machine (int64_to_bits !r) pos
     | Addr a -> 
         let bits_to_push = load_64bits_from_memory machine.memory a (Some pos) in
-        store_64bits_to_memory machine.memory rsp bits_to_push (Some pos)
-    
+        perform_push machine bits_to_push pos
+
+let perform_pop machine pos =
+    if (Int64.to_int !(machine.rsp)) > (Memory.dim machine.memory) - 8 then raise (Error ("Program attempted top pop while the stack does not have enough data.", Some pos));
+    let rsp = Int64.to_int !(machine.rsp) in
+    let bits = load_64bits_from_memory machine.memory rsp (Some pos) in
+    machine.rsp := Int64.add !(machine.rsp) 8L; bits
+
 let execute_popq machine args pos =
     let arg =
         match args with
         | [a] -> (resolve_operand machine a pos)
         | _ -> raise (Error ("Popq operation expects exacly 1 operand.", Some pos))
     in
-    if (Int64.to_int !(machine.rsp)) > (Memory.dim machine.memory) - 8 then raise (Error ("Program attempted top pop while the stack does not have enough data.", Some pos));
-    let rsp = Int64.to_int !(machine.rsp) in
     (match arg with
     | Lit _ -> raise (Error ("The destination of the Popq operation cannot be a literal number.", Some pos))
-    | Reg r -> r := bits_to_int64 (load_64bits_from_memory machine.memory rsp (Some pos))
-    | Addr a -> 
-        let bits_to_push = load_64bits_from_memory machine.memory rsp (Some pos) in
-        store_64bits_to_memory machine.memory a bits_to_push (Some pos));
-    machine.rsp := Int64.add !(machine.rsp) 8L
+    | Reg r -> r := bits_to_int64 (perform_pop machine pos)
+    | Addr a -> store_64bits_to_memory machine.memory a (perform_pop machine pos) (Some pos))
 
 let execute_leaq machine args pos =
     let left_arg, right_arg =
@@ -339,9 +343,6 @@ let execute_subq machine args pos =
         r := bits_to_int64 bits_dest
     | Addr _, Addr _ -> raise (Error ("Subq operation does not support two memory operands.", Some pos))
 
-let execute_imulq _ _ _ =
-    ()
-
 let execute_bin_log f machine args pos =
     let left_arg, right_arg =
         match args with
@@ -386,16 +387,45 @@ let execute_orq machine args pos =
 let execute_andq machine args pos =
     execute_bin_log (fun b1 b2 -> b1 && b2) machine args pos
 
-let execute_shlq _ _ _ =
-    ()
+let execute_shlq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Shlq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_dest = int64_to_bits !r in
+        shift_left (Int64.to_int n) bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | _, _ -> raise (Error ("Shlq operation only supports shifting registers by literal numbers.", Some pos))
 
-let execute_sarq _ _ _ =
-    ()
+let execute_sarq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Sarq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_dest = int64_to_bits !r in
+        shift_right_arithmetic (Int64.to_int n) bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | _, _ -> raise (Error ("Sarq operation only supports shifting registers by literal numbers.", Some pos))
 
-let execute_shrq _ _ _ =
-    ()
+let execute_shrq machine args pos =
+    let left_arg, right_arg =
+        match args with
+        | [l; r] -> (resolve_operand machine l pos, resolve_operand machine r pos)
+        | _ -> raise (Error ("Sarq operation expects exacly 2 operands.", Some pos))
+    in
+    match (left_arg, right_arg) with
+    | Lit n, Reg r ->
+        let bits_dest = int64_to_bits !r in
+        shift_right (Int64.to_int n) bits_dest machine.flags;
+        r := bits_to_int64 bits_dest
+    | _, _ -> raise (Error ("Sarq operation only supports shifting registers by literal numbers.", Some pos))
 
-    
 let execute_cmpq machine args pos =
     let left_arg, right_arg =
         match args with
@@ -446,23 +476,63 @@ let check_cond machine cnd =
     | X86.Lt -> machine.flags.flag_SF <> machine.flags.flag_OF
     | X86.Le -> !(machine.flags.flag_ZF) || (machine.flags.flag_SF <> machine.flags.flag_OF)
 
-let execute_jump _ _ _ _ =
-    ()
+let execute_jump ocnd machine args pos =
+    let arg = 
+        match args with
+        | [a] -> a
+        | _ -> raise (Error ("Jump operations expect exacly 1 operands.", Some pos))
+    in
+    match arg with
+    | X86.Imm (X86.Lbl l) ->
+        begin
+            match LabelMap.find_opt l machine.prog_labels with
+            | Some addr -> 
+                begin
+                    match ocnd with
+                    | None -> machine.rip := addr
+                    | Some cnd -> if check_cond machine cnd then machine.rip := addr else machine.rip := !(machine.rip) + 1
+                end
+            | None -> raise (Error ("Program attepted to jump to unknown label \"" ^ l ^ "\"", Some pos))
+        end
+    | _ -> raise (Error ("We only support jumping to labels in the text section.", Some pos))
+    
 let execute_set cnd machine args pos =
     let arg = 
         match args with
         | [a] -> resolve_operand machine a pos
-        | _ -> raise (Error ("Set operations expect exacly 1 operands.", Some pos))
+        | _ -> raise (Error ("Set operations expect exacly 1 operand.", Some pos))
     in
     match arg with
     | Lit _ -> raise (Error ("The destination of a set operation cannot be a literal number.", Some pos))
     | Reg _ -> raise (Error ("The destination of a set operation cannot be a 64 bit register; the result is a single byte. This operation just sets the byte to 1 if the condition holds and otherwise to 0.", Some pos))
     | Addr a -> if check_cond machine cnd then Memory.set machine.memory a 1 else Memory.set machine.memory a 0
 
-let execute_callq _ _ _ =
-    ()
+let execute_callq machine args pos =
+    let arg = 
+        match args with
+        | [a] -> a
+        | _ -> raise (Error ("Callq operation expects exacly 1 operand.", Some pos))
+    in
+    match arg with
+    | X86.Imm (X86.Lbl l) ->
+        begin
+            match LabelMap.find_opt l machine.prog_labels with
+            | Some addr -> 
+                begin
+                    perform_push machine (int64_to_bits (Int64.of_int (!(machine.rip) + 1))) pos;
+                    machine.rip := addr
+                end
+            | None -> raise (Error ("Program attepted to call unknown function \"" ^ l ^ "\"", Some pos))
+        end
+    | _ -> raise (Error ("We only support calling labels in the text section.", Some pos))
 
-let execute_retq _ _ _ =
+let execute_retq machine args pos =
+    (match args with
+    | [] -> ()
+    | _ -> raise (Error ("Callq operation expects exacly 0 operands.", Some pos)));
+    machine.rip := Int64.to_int (bits_to_int64 (perform_pop machine pos))
+
+let execute_imulq _ _ _ =
     ()
 
 let execute_cqto _ _ _ =
@@ -494,8 +564,8 @@ let decode_and_execute machine instr =
     | X86.Shlq -> execute_shlq machine args pos; step_rip ()
     | X86.Sarq -> execute_sarq machine args pos; step_rip ()
     | X86.Shrq -> execute_shrq machine args pos; step_rip ()
-    | X86.Jmp -> execute_jump machine None args pos (* jump/call/return operations set the rip appropriately. *)
-    | X86.J cnd -> execute_jump machine (Some cnd) args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.Jmp -> execute_jump None machine args pos (* jump/call/return operations set the rip appropriately. *)
+    | X86.J cnd -> execute_jump (Some cnd) machine args pos (* jump/call/return operations set the rip appropriately. *)
     | X86.Cmpq -> execute_cmpq machine args pos; step_rip ()
     | X86.Set cnd -> execute_set cnd machine args pos; step_rip ()
     | X86.Callq -> execute_callq machine args pos (* jump/call/return operations set the rip appropriately. *)
