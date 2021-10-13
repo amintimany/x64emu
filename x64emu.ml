@@ -13,11 +13,11 @@ let make_error tag msg p =
   match p with
   | Some pos ->
       Printf.sprintf
-      "<div class=\"alert alert-dismissible alert-danger\"><strong>%s</strong>: %s @ %s.</div>"
+      "<div class=\"alert alert-dismissible alert-danger\"><strong>%s</strong>: %s @ %s</div>"
       tag msg (format_position pos)
   | None ->
     Printf.sprintf
-      "<div class=\"alert alert-dismissible alert-danger\"><strong>%s</strong>: %s.</div>" tag msg
+      "<div class=\"alert alert-dismissible alert-danger\"><strong>%s</strong>: %s</div>" tag msg
 
 let make_register_display doc name x64emu_register_table =
   let th = Html.createTh doc in
@@ -142,10 +142,8 @@ fun () ->
     end;
   Array.iter (fun upd -> upd ()) !update_funs
 
-let make_stack_cell_display =
-  let last_row = ref Js.null in
+let make_stack_cell_display last_row doc address machine memory_table =
   let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
-  fun doc address machine memory_table ->
   let tr = Html.createTr doc in
   let td_address = Html.createTd doc in
   let td_value = Html.createTd doc in
@@ -164,6 +162,7 @@ let make_stack_cell_display =
   (fun () -> td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address)))
     
 let make_stack_display_for_machine doc display_limit machine x64emu_stack_table =
+  let last_row = ref Js.null in
   x64emu_stack_table##.innerHTML := Js.string "";
   let tr_head = Html.createTr doc in
   tr_head##.innerHTML := Js.string "<th>Address</th><th>Data</th>";
@@ -186,7 +185,7 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     if new_limit < last_limit then
       begin
         let tmp = Array.init (last_limit - new_limit) (fun _ -> ()) in
-        let newcells = Array.mapi (fun i _ -> make_stack_cell_display doc (last_limit - i - 1) machine x64emu_stack_table) tmp in
+        let newcells = Array.mapi (fun i _ -> make_stack_cell_display last_row doc (last_limit - i - 1) machine x64emu_stack_table) tmp in
         update_funs := Array.concat [!update_funs; newcells]
       end;
     Array.iter (fun upd -> upd ()) !update_funs; update_table_active current_rsp
@@ -282,7 +281,7 @@ Html.handler (fun _ ->
     | Some ParsingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Parsing Error" err p)
     | Some LoadingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Error in loading the program" err p)
     | Some Ok machine ->
-      (* (x64emu_load_result##.innerHTML := Js.string (success_message)); *)
+      x64emu_load_result##.innerHTML := Js.string "";
       let update_display =
         make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_flags_table x64emu_heap_table x64emu_stack_table
       in
@@ -303,7 +302,7 @@ Html.handler (fun _ ->
                 Html.window##alert (Js.string "An internal error has occured. This is likely a bug, please report.")
             | Machine.Error (msg, opos) ->
               x64emu_load_result##.innerHTML := Js.string (make_error "Error while executing the loaded program" msg opos);
-              Html.window##alert (Js.string ("An error occured! Only exeted " ^ (string_of_int (n - !rounds_left)) ^ " steps successfully. See the error message in the error box."))
+              Html.window##alert (Js.string ("An error occured! Only executed " ^ (string_of_int (n - !rounds_left)) ^ " steps successfully. See the error message in the error box."))
           end;
           update_display ()
         | None -> Html.window##alert (Js.string ((Js.to_string x64emu_entry_point##.value) ^ " is not a valid number.")));

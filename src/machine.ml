@@ -492,7 +492,7 @@ let execute_jump ocnd machine args pos =
                     | None -> machine.rip := addr
                     | Some cnd -> if check_cond machine cnd then machine.rip := addr else machine.rip := !(machine.rip) + 1
                 end
-            | None -> raise (Error ("Program attepted to jump to unknown label \"" ^ l ^ "\"", Some pos))
+            | None -> raise (Error ("Program attepted to jump to unknown label \"" ^ l ^ "\".", Some pos))
         end
     | _ -> raise (Error ("We only support jumping to labels in the text section.", Some pos))
     
@@ -522,7 +522,7 @@ let execute_callq machine args pos =
                     perform_push machine (int64_to_bits (Int64.of_int (!(machine.rip) + 1))) pos;
                     machine.rip := addr
                 end
-            | None -> raise (Error ("Program attepted to call unknown function \"" ^ l ^ "\"", Some pos))
+            | None -> raise (Error ("Program attepted to call unknown function \"" ^ l ^ "\".", Some pos))
         end
     | _ -> raise (Error ("We only support calling labels in the text section.", Some pos))
 
@@ -634,7 +634,8 @@ let decode_and_execute machine instr =
     
 let take_step machine =
     match !(machine.mode) with
-    | ExceptionHasOccured -> ()
+    | ExceptionHasOccured ->
+        raise (Error ("The machine has crasheda and therefore cannot take any steps anymore. Try reloading the code to start over. ", None))
     | Normal ->
         let cur_rip = !(machine.rip) in
         if (0 <= cur_rip && cur_rip < Array.length machine.prog) then
@@ -676,7 +677,7 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
                     least_free_address := offset + 8;
                     store_64bits_to_memory mem offset (int64_to_bits n) None
                 end
-            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported", Some pos))
+            | X86.Quad (X86.Lbl _, pos) -> raise (ErrorInitializingMachine ("Data declarations of the form \".quad label\" are not supported.", Some pos))
             | X86.Asciz (s, _) ->
                 let offset = !least_free_address in
                 least_free_address := offset + (String.length s + 1);
@@ -694,7 +695,7 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
     initialize_machine prog;
     let inital_rip = 
         match LabelMap.find_opt entry_point !prg_lbls with
-        | None -> raise (ErrorInitializingMachine ("Invalid Entry point: \"" ^ entry_point ^ "\"", None))
+        | None -> raise (ErrorInitializingMachine ("Invalid Entry point: \"" ^ entry_point ^ "\".", None))
         | Some i -> i
     in
     let ms =

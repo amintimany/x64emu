@@ -17,6 +17,6 @@ let load_the_code (code : string) (entry_point : string) =
     Ok (Machine.create_machine 20 10 prog entry_point)
   with
   | Lexer.Error (msg, p) -> LexingError (msg, p)
-  | Parser.Error -> ParsingError ("Parse Error", None)
+  | Parser.Error -> ParsingError ("Parse Error.", None)
   | Common.ParseError (msg, p) -> ParsingError (msg, Some p)
   | Machine.ErrorInitializingMachine (msg, p) -> LoadingError (msg, p)
