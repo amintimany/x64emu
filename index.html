@@ -4,6 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <title>x64emu</title>
+    <meta charset="utf-8"/>
     <link rel="stylesheet" href="bootstrap.min.css" />
     <script type="text/javascript" src="x64emu.bc.js"></script>
     <script src="ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
@@ -19,11 +20,13 @@
             <label class="form-label">Assembly source code:</label>
             <pre style="height:70vh;" id="x64emu_the_code"></pre>
             <div >
-                <div class="form-group col-2">
-                    <label for="exampleInputEmail1" class="form-label mt-4">Entry point:</label>
-                    <input type="text" class="form-control" id="x64emu_entry_point">
-                </div>
-                <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
+                <form>
+                    <div class="form-group col-2">
+                        <label for="x64emu_entry_point" class="form-label mt-4">Entry point:</label>
+                        <input type="text" class="form-control" id="x64emu_entry_point">
+                    </div>
+                    <button type="submit" class="btn btn-primary my-3" id="x64emu_load_code_button">Load code</button> 
+                </form>
             </div>
         </div>
         <div class="mb-3 mt-3 col-10 mx-auto" id="x64emu_load_result"></div>
@@ -31,7 +34,8 @@
             <h3><b>The machine:</b></h3>
             <hr/>
             <div class="row my">
-                <div class="mx-2 row align-items-center">
+                <form>
+                  <div class="mx-2 row align-items-center">
                     <div class="col-auto">
                         <button type="submit" class="btn btn-primary my-3" id="x64emu_take_steps">Take</button> 
                     </div>
@@ -44,24 +48,25 @@
                       </span>
                     </div>
                   </div>
-                </div>
+                </form>
+            </div>
             <hr/>
             <div class="row">
                 <div class="col-3">
                     <h5><b>Registers:</b></h5>
-                    <table class="col-3 table table-hover table-striped table-bordered">
+                    <table class="col-3 table table-hover table-striped table-bordered font-monospace">
                         <tbody id="x64emu_register_table">
                         </tbody>
                     </table>
                     <h5><b>Flags:</b></h5>
-                    <table class="col-3 table table-hover table-striped table-bordered">
+                    <table class="col-3 table table-hover table-striped table-bordered font-monospace">
                         <tbody id="x64emu_flags_table">
                         </tbody>
                     </table>
                 </div>
                 <div class="col-5">
-                    <h5><b>The Program:</b></h5>
-                    <div class="table-responsive border border-dark overflow-scroll" style="height: 100vh;">
+                    <h5 style="display: inline-block;"><b>The Program:</b></h5><button type="button" class="btn-sm mx-2 btn-primary mb-1" id="x64emu_scroll_to_rip">scroll to %rip</button>
+                    <div class="table-responsive border border-dark overflow-scroll font-monospace" style="height: 100vh;">
                         <table class="col-5 table table-bordered border-primary table-hover">
                             <tbody id="x64emu_program_table"></tbody>
                         </table>
@@ -71,13 +76,13 @@
                     <h5><b>The Memory:</b></h5>
                     <h6><b>The Heap:</b></h6>
                     <div class="table-responsive border border-dark overflow-scroll mb-3" style="height: 47vh;">
-                        <table class="col-4 table table-hover table-bordered border-primary">
+                        <table class="col-4 table table-hover table-bordered border-primary font-monospace">
                             <tbody id="x64emu_heap_table"></tbody>
                         </table>
                     </div>
-                    <h6><b>The Stack:</b></h6>
+                    <h6 style="display: inline-block;"><b>The Stack:</b></h6><button type="button" class="btn-sm mx-2 btn-primary mb-1" id="x64emu_scroll_to_rsp">scroll to %rsp</button>
                     <div class="table-responsive border border-dark overflow-scroll" style="height: 47vh;">
-                        <table class="col-4 table table-hover table-bordered border-primary">
+                        <table class="col-4 table table-hover table-bordered border-primary font-monospace">
                             <tbody id="x64emu_stack_table"></tbody>
                         </table>
                     </div>
@@ -110,10 +115,17 @@
         document.getElementById("x64emu_the_code").style.fontSize = (Math.min(Math.max(Math.round(screen.width/200), 12), 50)).toString().concat("px");
         editor.focus();
         function bring_to_view (id){
-            document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+            elem = document.getElementById(id)
+            if (elem == null){
+                return;
+            }
+            elem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
         }
         function toggle_table_active (id, turnon){
             elem = document.getElementById(id);
+            if (elem == null){
+                return;
+            }
             if (turnon)
             { elem.className = "table-active fw-bold" }
             else

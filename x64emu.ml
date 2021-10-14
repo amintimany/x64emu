@@ -141,40 +141,52 @@ fun () ->
       update_funs := Array.concat [!update_funs; (Array.map (fun (_, upd) -> upd) newcells)]
     end;
   Array.iter (fun upd -> upd ()) !update_funs
-
-let make_stack_cell_display last_row doc address machine memory_table =
+    
+let make_stack_display_for_machine doc display_limit machine x64emu_stack_table x64emu_scroll_to_rsp =
+  let last_row = ref Js.null in
+  x64emu_stack_table##.innerHTML := Js.string "";
   let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
-  let tr = Html.createTr doc in
-  let td_address = Html.createTd doc in
-  let td_value = Html.createTd doc in
-  Dom.appendChild tr td_address;
-  Dom.appendChild tr td_value;
-  tr##.id := Js.string (make_tr_label address);
   let make_address (n : int) =
     Binops.int64_to_hex_string (Int64.of_int n)
   in
   let make_value (n : int) =
     Binops.int_byte_to_hex n
   in
-  td_address##.innerHTML := Js.string (make_address address);
-  td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address));
-  Dom.insertBefore memory_table tr !last_row; last_row := Js.some tr;
-  (fun () -> td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address)))
-    
-let make_stack_display_for_machine doc display_limit machine x64emu_stack_table =
-  let last_row = ref Js.null in
-  x64emu_stack_table##.innerHTML := Js.string "";
+  let update_row (td_value, address) =
+    td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address))
+  in
+  let make_stack_row address =
+    let tr = Html.createTr doc in
+    let td_address = Html.createTd doc in
+    let td_value = Html.createTd doc in
+    Dom.appendChild tr td_address;
+    Dom.appendChild tr td_value;
+    tr##.id := Js.string (make_tr_label address);
+    td_address##.innerHTML := Js.string (make_address address);
+    td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address));
+    Dom.insertBefore x64emu_stack_table tr !last_row; last_row := Js.some tr;
+    (td_value, address)
+  in
   let tr_head = Html.createTr doc in
   tr_head##.innerHTML := Js.string "<th>Address</th><th>Data</th>";
   Dom.appendChild x64emu_stack_table tr_head;
-  let update_funs = ref [||] in
+  let all_rows = ref [||] in
   let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
-  let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
+  let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
+  let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in
   let last_rsp = ref (Int64.to_int !(machine.Machine.rsp)) in
   let update_table_active num = 
-    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label !last_rsp)); Js.Unsafe.inject (Js.bool false)|]);
-    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
-    last_rsp := num;
+    let lrsp = !last_rsp in
+    if 0 <= lrsp && lrsp < Machine.Memory.dim machine.memory then
+      begin
+        ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label !last_rsp)); Js.Unsafe.inject (Js.bool false)|])
+      end;
+      if 0 <= num && num < Machine.Memory.dim machine.memory then
+        begin
+          ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
+          x64emu_scroll_to_rsp##.onclick := Html.handler (fun _ -> bring_to_view num; Js.bool false)
+        end;
+      last_rsp := num
   in
   fun () ->
     let last_limit = !display_limit in
@@ -184,14 +196,13 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     let new_limit = !display_limit in
     if new_limit < last_limit then
       begin
-        let tmp = Array.init (last_limit - new_limit) (fun _ -> ()) in
-        let newcells = Array.mapi (fun i _ -> make_stack_cell_display last_row doc (last_limit - i - 1) machine x64emu_stack_table) tmp in
-        update_funs := Array.concat [!update_funs; newcells]
+        let newcells = Array.init (last_limit - new_limit) (fun i -> make_stack_row (last_limit - i - 1)) in
+        all_rows := Array.concat [!all_rows; newcells]
       end;
-    Array.iter (fun upd -> upd ()) !update_funs; update_table_active current_rsp
+    Array.iter (fun tda -> update_row tda) !all_rows; update_table_active current_rsp
 
 
-let make_program_display_for_machine doc machine x64emu_program_table =
+let make_program_display_for_machine doc machine x64emu_program_table x64emu_scroll_to_rip =
   x64emu_program_table##.innerHTML := Js.string "";
   let tr_head = Html.createTr doc in
   tr_head##.innerHTML := Js.string "<th>Label</th><th>Instruction</th>";
@@ -211,22 +222,30 @@ let make_program_display_for_machine doc machine x64emu_program_table =
   let res = Array.mapi make_instr machine.Machine.prog in
   Machine.LabelMap.iter (fun lbl addr -> let (_, td) = res.(addr) in td##.innerHTML := Js.string lbl) (machine.Machine.prog_labels);
   let last_rip = ref !(machine.Machine.rip) in
-  (* let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in *)
   let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
-  (* let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in *)
-  let update_table_active num = 
-    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label !last_rip)); Js.Unsafe.inject (Js.bool false)|]);
-    ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
-    last_rip := num;
+  let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
+  let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in
+  let update_table_active num =
+    let lrip = !last_rip in
+    if 0 <= lrip && lrip < Array.length machine.prog then
+      begin
+        ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label lrip)); Js.Unsafe.inject (Js.bool false)|])
+      end;
+      if 0 <= num && num < Array.length machine.prog then
+        begin
+          ignore (Js.Unsafe.fun_call toggle_table_active_fun [|Js.Unsafe.inject (Js.string (make_tr_label num)); Js.Unsafe.inject (Js.bool true)|]);
+          x64emu_scroll_to_rip##.onclick := Html.handler (fun _ -> bring_to_view num; Js.bool false)
+        end;
+      last_rip := num
   in
-  (fun () -> update_table_active !(machine.Machine.rip); (* bring_to_view !(machine.Machine.rip) *) ())
+  (fun () -> update_table_active !(machine.Machine.rip))
 
-let make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_flags_table x64emu_heap_table x64emu_stack_table =
+let make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_scroll_to_rip x64emu_flags_table x64emu_heap_table x64emu_stack_table x64emu_scroll_to_rsp =
   let register_update = make_register_display_for_machine doc machine x64emu_register_table in
-  let program_update = make_program_display_for_machine doc machine x64emu_program_table in
+  let program_update = make_program_display_for_machine doc machine x64emu_program_table x64emu_scroll_to_rip in
   let flags_update = make_flags_display_for_machine doc machine x64emu_flags_table in
   let heap_update = make_heap_display_for_machine doc (ref 0) machine x64emu_heap_table in
-  let stack_update = make_stack_display_for_machine doc (ref (Machine.Memory.dim machine.memory)) machine x64emu_stack_table in
+  let stack_update = make_stack_display_for_machine doc (ref (Machine.Memory.dim machine.memory)) machine x64emu_stack_table x64emu_scroll_to_rsp in
   (fun () -> register_update (); program_update (); flags_update (); heap_update (); stack_update ())
 
 let onload _ =
@@ -261,10 +280,28 @@ in
 let x64emu_num_steps =
   Js.coerce_opt (doc##getElementById (Js.string "x64emu_num_steps")) Html.CoerceTo.input (fun _ -> assert false)
 in
+let x64emu_scroll_to_rip =
+  Js.coerce_opt (doc##getElementById (Js.string "x64emu_scroll_to_rip")) Html.CoerceTo.button (fun _ -> assert false)
+in
+let x64emu_scroll_to_rsp =
+  Js.coerce_opt (doc##getElementById (Js.string "x64emu_scroll_to_rsp")) Html.CoerceTo.button (fun _ -> assert false)
+in
+let clean_up () =
+  x64emu_scroll_to_rsp##.onclick := Html.handler (fun _ -> Js.bool false);
+  x64emu_scroll_to_rip##.onclick := Html.handler (fun _ -> Js.bool false);
+  x64emu_take_steps##.onclick := Html.handler (fun _ -> Js.bool false);
+  x64emu_stack_table##.innerHTML := Js.string "";
+  x64emu_heap_table##.innerHTML := Js.string "";
+  x64emu_flags_table##.innerHTML := Js.string "";
+  x64emu_program_table##.innerHTML := Js.string "";
+  x64emu_register_table##.innerHTML := Js.string "";
+  x64emu_load_result##.innerHTML := Js.string ""
+in
 let get_num_steps () = int_of_string_opt (Js.to_string x64emu_num_steps##.value) in
 let editor = Js.Unsafe.variable "editor" in
 let () = x64emu_load_code_button##.onclick := 
-Html.handler (fun _ -> 
+Html.handler (fun _ ->
+  clean_up ();
   let src = Js.Unsafe.meth_call editor "getValue" [||] in
   let src_str = Js.to_string src in
   let entry_point = Js.to_string x64emu_entry_point##.value in
@@ -281,9 +318,8 @@ Html.handler (fun _ ->
     | Some ParsingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Parsing Error" err p)
     | Some LoadingError (err, p) -> x64emu_load_result##.innerHTML := Js.string (make_error "Error in loading the program" err p)
     | Some Ok machine ->
-      x64emu_load_result##.innerHTML := Js.string "";
       let update_display =
-        make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_flags_table x64emu_heap_table x64emu_stack_table
+        make_machine_display doc machine x64emu_register_table x64emu_program_table x64emu_scroll_to_rip x64emu_flags_table x64emu_heap_table x64emu_stack_table x64emu_scroll_to_rsp
       in
       update_display ();
       x64emu_take_steps##.onclick :=

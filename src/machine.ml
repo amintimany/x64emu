@@ -597,8 +597,6 @@ let execute_idivq machine args pos =
     with
     |Division_by_zero -> raise (Error ("Division by zero.", Some pos))
 
-    
-        
 let decode_and_execute machine instr =
     let step_rip () =
         machine.rip := !(machine.rip) + 1
@@ -635,7 +633,7 @@ let decode_and_execute machine instr =
 let take_step machine =
     match !(machine.mode) with
     | ExceptionHasOccured ->
-        raise (Error ("The machine has crasheda and therefore cannot take any steps anymore. Try reloading the code to start over. ", None))
+        raise (Error ("The machine has crashed and therefore cannot take any steps anymore. Try reloading the code to start over. ", None))
     | Normal ->
         let cur_rip = !(machine.rip) in
         if (0 <= cur_rip && cur_rip < Array.length machine.prog) then
@@ -646,7 +644,7 @@ let take_step machine =
         else
             begin
             machine.mode := ExceptionHasOccured;
-            raise (Error ("Rip register is pointing outside the text section. The rip is " ^(string_of_int cur_rip) ^ " while the program consists of " ^ (string_of_int (Array.length machine.prog)) ^ "instructions.", None))
+            raise (Error ("Rip register is pointing outside the text section. The rip register is " ^(string_of_int cur_rip) ^ " while the program consists of " ^ (string_of_int (Array.length machine.prog)) ^ " instructions.", None))
             end
 
 (* Creates a machine and loads the X86 program. *)
