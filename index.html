@@ -121,15 +121,60 @@
             }
             elem.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
         }
-        function toggle_table_active (id, turnon){
+        function parse_className(cls){
+            return cls.split(" ");
+        }
+        function pretty_print_className(cls){
+            res = "";
+            for(i = 0; i < cls.length; i++){
+                res = res.concat(" ");
+                res = res.concat(cls[i]);
+            }
+            return res;
+        }
+        function className_toggle(cls, cl, turnon){
+            clsa = parse_className(cls);
+            found = false;
+            clsb = [];
+            for(i = 0; i < clsa.length; i++){
+                if(!(cl == clsa[i])){
+                    clsb.push(clsa[i]);
+                }
+                else{
+                    found = true;
+                }
+            }
+            if(found){
+                if(turnon){
+                    return cls;
+                }
+                else{
+                    return pretty_print_className(clsb);
+                }
+            }
+            else{
+                if(turnon){
+                    clsb.push(cl);
+                    return pretty_print_className(clsb);
+                }
+                else{
+                    return cls;
+                }
+            }
+        }
+        function toggle_class_by_id (id, cl, turnon){
             elem = document.getElementById(id);
             if (elem == null){
                 return;
             }
-            if (turnon)
-            { elem.className = "table-active fw-bold" }
-            else
-            { elem.className = "" }
+            elem.className = className_toggle(elem.className, cl, turnon)
+        }
+        function toggle_table_active (id, turnon){
+            toggle_class_by_id(id, "table-active", turnon);
+            toggle_class_by_id(id, "fw-bold", turnon);
+        }
+        function toggle_table_just_updated (id, turnon){
+            toggle_class_by_id(id, "table-sucess", turnon);
         }
     </script>
   </body>
