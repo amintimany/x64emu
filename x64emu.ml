@@ -158,6 +158,7 @@ let make_heap_display_for_machine doc display_limit machine x64emu_heap_table =
     
 let make_stack_display_for_machine doc display_limit machine x64emu_stack_table x64emu_scroll_to_rsp =
   let last_row = ref Js.null in
+  let last_tbody = ref Js.null in
   (* let last_updated_rows = ref [] in *)
   x64emu_stack_table##.innerHTML := Js.string "";
   let make_tr_label num = "x64emu_stack_row_" ^ string_of_int num in
@@ -171,7 +172,7 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
   let update_row (td_value, address) =
     td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address))
   in
-  let make_stack_row address =
+  let make_stack_row tbody address =
     let tr = Html.createTr doc in
     let td_address = Html.createTd doc in
     let td_value = Html.createTd doc in
@@ -180,12 +181,14 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     tr##.id := Js.string (make_tr_label address);
     td_address##.innerHTML := Js.string (make_address address);
     td_value##.innerHTML := Js.string (make_value (Machine.Memory.get machine.Machine.memory address));
-    Dom.insertBefore x64emu_stack_table tr !last_row; last_row := Js.some tr;
+    Dom.insertBefore tbody tr !last_row; last_row := Js.some tr;
     (td_value, address)
   in
   let tr_head = Html.createTr doc in
+  let tbody_head = Html.createTbody doc in
   tr_head##.innerHTML := Js.string "<th>Address</th><th>Data</th>";
-  Dom.appendChild x64emu_stack_table tr_head;
+  Dom.appendChild tbody_head tr_head;
+  Dom.appendChild x64emu_stack_table tbody_head;
   let all_rows = ref [||] in
   let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
   let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
@@ -214,7 +217,10 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     let new_limit = !display_limit in
     if new_limit < last_limit then
       begin
-        let newcells = Array.init (last_limit - new_limit) (fun i -> make_stack_row (last_limit - i - 1)) in
+        last_row := Js.null;
+        let tbody = Html.createTbody doc in
+        let newcells = Array.init (last_limit - new_limit) (fun i -> make_stack_row tbody (last_limit - i - 1)) in
+        Dom.insertBefore x64emu_stack_table tbody !last_tbody; last_tbody := Js.some tbody;
         all_rows := Array.concat [!all_rows; newcells]
       end
   in
@@ -321,7 +327,7 @@ let onload _ =
     Js.coerce_opt (doc##getElementById (Js.string "x64emu_heap_table")) Html.CoerceTo.tbody (fun _ -> assert false)
   in
   let x64emu_stack_table =
-    Js.coerce_opt (doc##getElementById (Js.string "x64emu_stack_table")) Html.CoerceTo.tbody (fun _ -> assert false)
+    Js.coerce_opt (doc##getElementById (Js.string "x64emu_stack_table")) Html.CoerceTo.table (fun _ -> assert false)
   in
   let x64emu_take_steps =
     Js.coerce_opt (doc##getElementById (Js.string "x64emu_take_steps")) Html.CoerceTo.button (fun _ -> assert false)
