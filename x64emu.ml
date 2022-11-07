@@ -190,8 +190,8 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
   Dom.appendChild tbody_head tr_head;
   Dom.appendChild x64emu_stack_table tbody_head;
   let all_rows = ref [||] in
-  let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
-  let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
+  let toggle_table_active_fun = Js.Unsafe.pure_js_expr "toggle_table_active" in
+  let bring_to_view_fun = Js.Unsafe.pure_js_expr "bring_to_view" in
   let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in
   let last_rsp = ref (Int64.to_int !(machine.Machine.rsp)) in
   let update_table_active num = 
@@ -262,8 +262,8 @@ let make_program_display_for_machine doc machine x64emu_program_table x64emu_scr
   let res = Array.mapi make_instr machine.Machine.prog in
   Machine.LabelMap.iter (fun lbl addr -> let (_, td) = res.(addr) in td##.innerHTML := Js.string lbl) (machine.Machine.prog_labels);
   let last_rip = ref !(machine.Machine.rip) in
-  let toggle_table_active_fun = Js.Unsafe.variable "toggle_table_active" in
-  let bring_to_view_fun = Js.Unsafe.variable "bring_to_view" in
+  let toggle_table_active_fun = Js.Unsafe.pure_js_expr "toggle_table_active" in
+  let bring_to_view_fun = Js.Unsafe.pure_js_expr "bring_to_view" in
   let bring_to_view num = ignore (Js.Unsafe.fun_call bring_to_view_fun [|Js.Unsafe.inject (Js.string (make_tr_label num))|]) in
   let update_table_active num =
     let lrip = !last_rip in
@@ -353,7 +353,7 @@ let onload _ =
     x64emu_load_result##.innerHTML := Js.string ""
   in
   let get_num_steps () = int_of_string_opt (Js.to_string x64emu_num_steps##.value) in
-  let editor = Js.Unsafe.variable "editor" in
+  let editor = Js.Unsafe.pure_js_expr "editor" in
   let () = x64emu_load_code_button##.onclick := 
   Html.handler (fun _ ->
     clean_up ();
