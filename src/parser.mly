@@ -138,7 +138,7 @@ let process_lines (lns : line list) : X86.prog =
 %token <int64> INT
 %token <string> LABEL
 %token <string> STRING
-%token DOT PERCENT DOLLAR COLON COMMA ASTRISK
+%token DOT PERCENT DOLLAR COLON COMMA ASTERISK
 %token INT64MIN (* This is produced when we encounter the number 9223372036854775808 which is does not fit in a 64 bit integer but its negation does (it is the least value that does). *)
 %token MINUS (* Used for negative numbers. *)
 %token LPAREN RPAREN
@@ -212,34 +212,28 @@ register:
 | PERCENT l=LABEL        { process_register l $startpos }
 
 non_jump_operand:
-| DOLLAR imm=immediate   { X86.Imm imm }
-| r=register             { X86.Reg r }
-| imm=immediate          { X86.Ind1 imm }
-| LPAREN r=register RPAREN
-                         { X86.Ind2 r }
-| imm=immediate LPAREN r=register RPAREN
-                         { X86.Ind3 (imm, r) }
+| DOLLAR imm=immediate                     { X86.Imm imm }
+| r=register                               { X86.Reg r }
+| imm=immediate                            { X86.Ind1 imm }
+| LPAREN r=register RPAREN                 { X86.Ind2 r }
+| imm=immediate LPAREN r=register RPAREN   { X86.Ind3 (imm, r) }
 
 jump_operand:
-| imm=immediate          { X86.Imm imm }
-| ASTRISK r=register     { X86.Reg r }
-| ASTRISK imm=immediate  { X86.Ind1 imm }
-| ASTRISK LPAREN r=register RPAREN
-                         { X86.Ind2 r }
-| ASTRISK imm=immediate LPAREN r=register RPAREN
-                         { X86.Ind3 (imm, r) }
+| imm=immediate                                   { X86.Imm imm }
+| ASTERISK r=register                              { X86.Reg r }
+| ASTERISK imm=immediate                           { X86.Ind1 imm }
+| ASTERISK LPAREN r=register RPAREN                { X86.Ind2 r }
+| ASTERISK imm=immediate LPAREN r=register RPAREN  { X86.Ind3 (imm, r) }
 
 
 line:
-| DOT l=LABEL           { process_section l $startpos }
-| DOT c=LABEL l=LABEL   { process_declaration_command c l $startpos }
-| DOT c=LABEL i=INT     { process_int_decl c i $startpos }
-| DOT c=LABEL s=STRING  { process_string_decl c s $startpos }
-| l=LABEL COLON         { LabelDecl (l, $startpos) }
-| opc=jump_opcode ops=separated_list(COMMA, jump_operand)
-                        { Instruction ((opc, ops, $startpos), $startpos) }
-| opc=non_jump_opcode ops=separated_list(COMMA, non_jump_operand)
-                        { Instruction ((opc, ops, $startpos), $startpos) }
+| DOT l=LABEL                                                       { process_section l $startpos }
+| DOT c=LABEL l=LABEL                                               { process_declaration_command c l $startpos }
+| DOT c=LABEL i=INT                                                 { process_int_decl c i $startpos }
+| DOT c=LABEL s=STRING                                              { process_string_decl c s $startpos }
+| l=LABEL COLON                                                     { LabelDecl (l, $startpos) }
+| opc=jump_opcode ops=separated_list(COMMA, jump_operand)           { Instruction ((opc, ops, $startpos), $startpos) }
+| opc=non_jump_opcode ops=separated_list(COMMA, non_jump_operand)   { Instruction ((opc, ops, $startpos), $startpos) }
 
 lines:
 | NEWLINE* ln=line lns=after_line
@@ -265,7 +259,7 @@ any_token:
 | DOLLAR        { (DOLLAR, $startpos) }
 | COLON         { (COLON, $startpos)}
 | COMMA         { (COMMA, $startpos)}
-| ASTRISK       { (ASTRISK, $startpos)}
+| ASTERISK       { (ASTERISK, $startpos)}
 | LPAREN        { (LPAREN, $startpos) }
 | RPAREN        { (RPAREN, $startpos) }
 | INT64MIN      { (INT64MIN, $startpos) }

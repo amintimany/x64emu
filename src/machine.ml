@@ -515,7 +515,8 @@ let execute_jump ocnd machine args pos =
         | _ -> raise (Error ("Jump operations expect exacly 1 operands.", Some pos))
     in
     match arg with
-    | X86.Imm (X86.Lbl l) ->
+    | X86.Imm (X86.Lbl l)
+    | X86.Ind3 (X86.Lbl l, X86.Rip) ->
         begin
             match LabelMap.find_opt l machine.prog_labels with
             | Some addr -> 
@@ -546,7 +547,8 @@ let execute_callq machine args pos =
         | _ -> raise (Error ("Callq operation expects exacly 1 operand.", Some pos))
     in
     match arg with
-    | X86.Imm (X86.Lbl l) ->
+    | X86.Imm (X86.Lbl l)
+    | X86.Ind3 (X86.Lbl l, X86.Rip) ->
         begin
             match LabelMap.find_opt l machine.prog_labels with
             | Some addr -> 

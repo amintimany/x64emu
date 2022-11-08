@@ -162,27 +162,6 @@ let as_encode s =
         if 32 <= ordc && ordc < 128 then c:: (ase cs) 
         else '\\':: (explode charsc) @ (ase cs) in    
   s |> explode |> ase |> implode 
-(*
-let as_encode s =
-
-  let rec ase = match ase with 
-     [] -> []
-    |  (#"\\"::cs) -> #"\\" :: #"\\" :: (ase cs)
-    |  (#"\""::cs) -> #"\\" :: #"\"" :: (ase cs)
-    |  (c::cs) ->
-      let
-          val ordc = ord(c)
-          val charsc = Int.fmt StringCvt.OCT ordc
-      in
-          if 32 <= ordc andalso ordc < 128 then c :: (ase cs)
-          else (#"\\" :: (explode charsc)) @ (ase cs)
-      end
-in
-  (implode o ase o explode) s
-end
-*)
-
-
 
 let string_of_data = function 
    (Asciz (s, _)) -> "\t.asciz\t" ^ "\"" ^ (as_encode s) ^ "\""
@@ -204,4 +183,3 @@ let string_of_elem {lbl; global; asm} : string =
 
 let string_of_prog (p:prog) : string =
   String.concat "\n" (List.map string_of_elem p)
-

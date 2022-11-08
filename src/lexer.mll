@@ -32,7 +32,7 @@ rule token = parse
 | '$'              { DOLLAR }
 | ':'              { COLON }
 | ','              { COMMA }
-| '*'              { ASTRISK }
+| '*'              { ASTERISK }
 | '('              { LPAREN }
 | ')'              { RPAREN }
 | "shrq"           { SHRQ }
@@ -107,7 +107,7 @@ lex_string buf = parse
     | DOLLAR -> "DOLLAR"
     | COLON -> "COLON"
     | COMMA -> "COMMA"
-    | ASTRISK -> "ASTRISK"
+    | ASTERISK -> "ASTERISK"
     | LPAREN -> "LPAREN"
     | RPAREN -> "RPAREN"
     | INT64MIN -> "INT64MIN"
