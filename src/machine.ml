@@ -475,7 +475,19 @@ let execute_cmpq machine args pos =
         bits_add bits_src bits_for_one bits_src machine.flags;
         bits_add bits_src bits_dest bits_dest machine.flags;
         [MCFlags]
-    | _, Lit _ -> raise (Error ("The destination of cmpq operation cannot be a literal number.", Some pos))
+    | Reg (_, rr), Lit n ->
+        let bits_src = int64_to_bits !rr in
+        let bits_dest = int64_to_bits n in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags; [MCFlags]
+    | Addr a, Lit n -> 
+        let bits_src = (load_64bits_from_memory machine.memory a (Some pos)) in
+        let bits_dest = int64_to_bits n in
+        bits_not bits_src machine.flags;
+        bits_add bits_src bits_for_one bits_src machine.flags;
+        bits_add bits_src bits_dest bits_dest machine.flags;
+        [MCFlags]
     | Reg (_, sr), Reg (_, dr) ->
         let bits_src = int64_to_bits !sr in
         let bits_dest = int64_to_bits !dr in
@@ -497,6 +509,7 @@ let execute_cmpq machine args pos =
         bits_add bits_src bits_for_one bits_src machine.flags;
         bits_add bits_src bits_dest bits_dest machine.flags;
         [MCFlags]
+    | Lit _, Lit _ -> raise (Error ("Cmpq operation does not support two literal operands.", Some pos))
     | Addr _, Addr _ -> raise (Error ("Cmpq operation does not support two memory operands.", Some pos))
 
 let check_cond machine cnd =
