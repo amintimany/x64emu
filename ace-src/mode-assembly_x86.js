@@ -8,7 +8,7 @@ var AssemblyX86HighlightRules = function() {
 
     this.$rules = { start: 
        [ { token: 'keyword.control.assembly',
-           regex: '\\b(movq|pushq|popq|leaq|incq|decq|negq|notq|addq|subq|imulq|xorq|orq|andq|shlq|sarq|shrq|jmp|je|jne|jg|jge|jl|jle|cmpq|sete|setne|setg|setge|setl|setle|callq|retq|ctoq|idivq)\\b',
+           regex: '\\b(movq|pushq|popq|leaq|incq|decq|negq|notq|addq|subq|imulq|xorq|orq|andq|shlq|sarq|shrq|jmp|je|jne|jg|jge|jl|jle|cmpq|sete|setne|setg|setge|setl|setle|callq|retq|ctoq|idivq|hlt)\\b',
            caseInsensitive: true },
          { token: 'variable.parameter.register.assembly',
            regex: '\\b(?:CS|DS|ES|FS|GS|SS|RAX|EAX|RBX|EBX|RCX|ECX|RDX|EDX|RCX|RIP|EIP|IP|RBP|EBP|BP|RSP|ESP|SP|RSI|ESI|SI|RDI|EDI|DI|RFLAGS|EFLAGS|FLAGS|R8-15|(?:Y|X)MM(?:[0-9]|10|11|12|13|14|15)|(?:A|B|C|D)(?:X|H|L)|CR(?:[0-4]|DR(?:[0-7]|TR6|TR7|EFER)))\\b',

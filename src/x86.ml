@@ -22,40 +22,46 @@ type imm = Lit of quad
     callee-save: rbx, rbp, r12-r15
  *)
 
-type reg = Rip
-         | Rax | Rbx | Rcx | Rdx | Rsi | Rdi | Rbp | Rsp
-         | R08 | R09 | R10 | R11 | R12 | R13 | R14 | R15
+type reg =
+| Rip
+| Rax | Rbx | Rcx | Rdx | Rsi | Rdi | Rbp | Rsp
+| R08 | R09 | R10 | R11 | R12 | R13 | R14 | R15
 
-type operand = Imm of imm        (* immediate *)
-             | Reg of reg            (* register *)
-             | Ind1 of imm           (* indirect: displacement *)
-             | Ind2 of reg           (* indirect: (%reg) *)
-             | Ind3 of (imm * reg)   (* indirect: displacement(%reg) *)
+type operand =
+| Imm of imm        (* immediate *)
+| Reg of reg            (* register *)
+| Ind1 of imm           (* indirect: displacement *)
+| Ind2 of reg           (* indirect: (%reg) *)
+| Ind3 of (imm * reg)   (* indirect: displacement(%reg) *)
 
 (* Condition Codes *)
 type cnd = Eq | Neq | Gt | Ge | Lt | Le
 
-type opcode = Movq | Pushq | Popq
-            | Leaq (* Load Effective Address *)
-            | Incq | Decq | Negq | Notq
-            | Addq | Subq | Imulq | Xorq | Orq | Andq
-            | Shlq | Sarq | Shrq
-            | Jmp | J of cnd
-            | Cmpq  | Set of cnd
-            | Callq | Retq
-            | Cqto | Idivq
-            | Comment of string
+type opcode = 
+| Movq | Pushq | Popq
+| Leaq (* Load Effective Address *)
+| Incq | Decq | Negq | Notq
+| Addq | Subq | Imulq | Xorq | Orq | Andq
+| Shlq | Sarq | Shrq
+| Jmp | J of cnd
+| Cmpq  | Set of cnd
+| Callq | Retq
+| Cqto | Idivq
+| Comment of string
+| HLT
 
 (* An instruction is an opcode plus its operands.
    Note that arity and other constraints about the operands
    are not checked. *)
 type ins = opcode * operand list * Lexing.position
 
-type data = Asciz of string * Lexing.position
-              | Quad of imm * Lexing.position
+type data =
+| Asciz of string * Lexing.position
+| Quad of imm * Lexing.position
 
-type asm = Text of ins list    (* code *)
-             | Data of data list   (* data *)
+type asm =
+| Text of ins list    (* code *)
+| Data of data list   (* data *)
 
 (* labeled blocks with data or code *)
 type elem = { lbl: lbl; global: bool; asm: asm }
@@ -123,6 +129,7 @@ let string_of_opcode (opc:opcode) : string =
   | Jmp  -> "jmp"  | J c -> "j" ^ string_of_cnd c
   | Cmpq -> "cmpq" | Set c -> "set" ^ string_of_cnd c
   | Callq -> "callq" | Retq -> "retq" | Cqto -> "cqto" | Idivq -> "idivq"
+  | HLT -> "hlt"
   | Comment s -> "# " ^ String.escaped s
 
 let map_concat s f l = String.concat s (List.map f l)

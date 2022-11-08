@@ -150,6 +150,7 @@ let process_lines (lns : line list) : X86.prog =
 %token JMP JE JNE JG JGE JL JLE
 %token CMPQ SETE SETNE SETG SETGE SETL SETLE
 %token CALLQ RETQ CQTO IDIVQ
+%token HLT
 
 %type <(token * Lexing.position) list> token_list
 %type <X86.prog> prog
@@ -187,6 +188,7 @@ non_jump_opcode:
 | RETQ                   { X86.Retq }
 | CQTO                   { X86.Cqto }
 | IDIVQ                  { X86.Idivq }
+| HLT                    { X86.HLT }
 
 jump_opcode:
 | CALLQ                  { X86.Callq }

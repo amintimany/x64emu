@@ -5,7 +5,7 @@ module LabelMap = Map.Make(String)
 
 type memory = (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Memory.t
 
-type machine_mode = Normal | ExceptionHasOccured
+type machine_mode = Normal | Halted | ExceptionHasOccured
 
 exception ErrorInitializingMachine of string * Lexing.position option
 
@@ -686,12 +686,15 @@ let decode_and_execute machine instr =
         let res = execute_cqto machine args pos in step_rip (); res
     | X86.Idivq ->
         let res = execute_idivq machine args pos in step_rip (); res
+    | X86.HLT -> machine.mode := Halted; []
     | X86.Comment _ -> raise InternalError
     
 let take_step machine =
     match !(machine.mode) with
     | ExceptionHasOccured ->
         raise (Error ("The machine has crashed and therefore cannot take any steps anymore. Try reloading the code to start over. ", None))
+    | Halted ->
+        raise (Error ("The machine has laready halted and therefore cannot take any steps anymore. Try reloading the code to start over. ", None))
     | Normal ->
         let cur_rip = !(machine.rip) in
         if (0 <= cur_rip && cur_rip < Array.length machine.prog) then

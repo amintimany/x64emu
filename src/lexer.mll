@@ -70,6 +70,7 @@ rule token = parse
 | "leaq"           { LEAQ }
 | "incq"           { INCQ }
 | "decq"           { DECQ }
+| "hlt"            { HLT }
 | ';'|'#'          { comment lexbuf }
 | ident as lbl     { LABEL lbl }
 | _ as c           { raise (Error ("Invalid character: '" ^ (String.make 1 c) ^ "'.", lexbuf.lex_curr_p)) }
@@ -148,4 +149,5 @@ lex_string buf = parse
     | NEWLINE -> "NEWLINE"
     | INCQ -> "INCQ"
     | DECQ -> "DECQ"
+    | HLT -> "HLT"
 }
