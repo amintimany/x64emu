@@ -381,16 +381,17 @@ let onload _ =
             let rounds_left = ref n in
             begin
               let mcs_to_be_updated =
+              let mcl_union mcl mcl' =
+                List.fold_left (fun mcs mc -> if List.exists (fun mc' -> mc = mc') mcs then mcs else mc :: mcs) mcl' mcl
+              in
               try
-                let rec loop last_mcs_to_be_updated =
+                let rec loop mcl =
                   if !rounds_left = 0 then
-                    last_mcs_to_be_updated
+                      mcl
                   else
-                    begin
-                      let lmcs = Machine.take_step machine in
-                      rounds_left := !rounds_left - 1;
-                      loop lmcs
-                    end
+                    let lmcs = Machine.take_step machine in
+                    rounds_left := !rounds_left - 1;
+                    loop (mcl_union mcl lmcs)
                 in
                 loop []
               with
