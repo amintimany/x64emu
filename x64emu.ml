@@ -378,32 +378,31 @@ let onload _ =
         Html.handler (fun _ ->
           (match get_num_steps () with
           | Some n ->
-            let rounds_left = ref n in
+            let mcs_to_be_updated = ref [] in
             begin
-              let mcs_to_be_updated =
-              let mcl_union mcl mcl' =
-                List.fold_left (fun mcs mc -> if List.exists (fun mc' -> mc = mc') mcs then mcs else mc :: mcs) mcl' mcl
+            let rounds_left = ref n in
+            let mcl_union mcl mcl' =
+              List.fold_left (fun mcs mc -> if List.exists (fun mc' -> mc = mc') mcs then mcs else mc :: mcs) mcl' mcl
+            in
+            try
+              let rec loop () =
+                if !rounds_left = 0 then
+                    ()
+                else
+                  let lmcs = Machine.take_step machine in
+                  rounds_left := !rounds_left - 1;
+                  mcs_to_be_updated := (mcl_union !mcs_to_be_updated lmcs);
+                  loop ()
               in
-              try
-                let rec loop mcl =
-                  if !rounds_left = 0 then
-                      mcl
-                  else
-                    let lmcs = Machine.take_step machine in
-                    rounds_left := !rounds_left - 1;
-                    loop (mcl_union mcl lmcs)
-                in
-                loop []
-              with
-              | Machine.InternalError ->
-                  Html.window##alert (Js.string "An internal error has occured. This is likely a bug, please report."); []
-              | Machine.Error (msg, opos) ->
-                x64emu_load_result##.innerHTML := Js.string (make_error "Error while executing the loaded program" msg opos);
-                Html.window##alert (Js.string ("An error occured! Only executed " ^ (string_of_int (n - !rounds_left)) ^ " steps successfully. See the error message in the error box."));
-                []
-              in
-              !update_the_machine_state mcs_to_be_updated
+              loop ()
+            with
+            | Machine.InternalError ->
+                Html.window##alert (Js.string "An internal error has occured. This is likely a bug, please report.")
+            | Machine.Error (msg, opos) ->
+              x64emu_load_result##.innerHTML := Js.string (make_error "Error while executing the loaded program" msg opos);
+              Html.window##alert (Js.string ("An error occured! Only executed " ^ (string_of_int (n - !rounds_left)) ^ " steps successfully. See the error message in the error box."))
             end;
+            !update_the_machine_state !mcs_to_be_updated
           | None -> Html.window##alert (Js.string ((Js.to_string x64emu_entry_point##.value) ^ " is not a valid number.")));
           Js.bool false)
     in
