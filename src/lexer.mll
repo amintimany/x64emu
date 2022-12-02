@@ -13,7 +13,7 @@ let ident = ('_'|letter)('_'|letter|digit|'@'|'$')*
 
 rule token = parse
 | eof              { EOF }
-| '\n'             { Lexing.new_line lexbuf; NEWLINE }
+| '\n' | '\r''\n'  { Lexing.new_line lexbuf; NEWLINE }
 | [' ' '\t']       { token lexbuf }
 | digit+ as i      { if i = "9223372036854775808" then
                        INT64MIN
