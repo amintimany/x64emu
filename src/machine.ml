@@ -57,7 +57,7 @@ prog_labels : int LabelMap.t;
 data_labels : int LabelMap.t;
 }
 
-let last_stack_address machine = Memory.dim machine.memory
+let last_stack_address machine = Memory.dim machine.memory - 1
 
 let bytes_of_memory (n : int) (addr : int) =
     let rec bom i acc =
@@ -180,7 +180,7 @@ let execute_pushq machine args pos =
         perform_push machine bits_to_push pos
 
 let perform_pop machine pos =
-    if (Int64.to_int !(machine.rsp)) > (last_stack_address machine) - 8 then raise (Error ("Program attempted top pop while the stack does not have enough data.", Some pos));
+    if (Int64.to_int !(machine.rsp)) + 8 > (last_stack_address machine) + 1 then raise (Error ("Program attempted top pop while the stack does not have enough data.", Some pos));
     let rsp = Int64.to_int !(machine.rsp) in
     let bits = load_64bits_from_memory machine.memory rsp (Some pos) in
     machine.rsp := Int64.add !(machine.rsp) 8L; bits
@@ -729,7 +729,7 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
     let inital_stack_pointer = Int64.of_int memory_size in
     (* Adjust address_bits to between 10 and 16 bits, i.e., 1 KB to 64 KB. *)
     let stack_size_bits_adjusted = if stack_size_bits < 10 then 10 else if stack_size_bits > 16 then 16 else stack_size_bits in
-    let last_stack_address = memory_size - (1 lsl stack_size_bits_adjusted) in
+    let first_stack_address = memory_size - (1 lsl stack_size_bits_adjusted) in
     let mem = Memory.create Bigarray.Int8_unsigned Bigarray.c_layout memory_size in
     let prg_list = ref [] in
     let prg_lbls = ref LabelMap.empty in
@@ -776,7 +776,7 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
        r13 = ref 0L; r14 = ref 0L; r15 = ref 0L;
        flags = make_flags ();
        heap_boundary = !least_free_address;
-       stack_boundary = last_stack_address;
+       stack_boundary = first_stack_address;
        mode = ref Normal;
        memory = mem;
        prog = Array.of_list (List.rev !prg_list);
@@ -784,5 +784,5 @@ let create_machine (address_bits : int) (stack_size_bits : int) (prog : X86.prog
        data_labels = !data_lbls}
     in
     if ms.heap_boundary > ms.stack_boundary then raise (ErrorInitializingMachine ("The heap and can stack overlap in the constructed machine.", None));
-    ignore (execute_pushq ms [X86.Imm (X86.Lit (Int64.of_int (memory_size + 1024)))] Lexing.dummy_pos);
+    ignore (execute_pushq ms [X86.Imm (X86.Lit (Int64.of_int memory_size))] Lexing.dummy_pos);
     ms

@@ -219,7 +219,7 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
       begin
         last_row := Js.null;
         let tbody = Html.createTbody doc in
-        let newcells = Array.init (last_limit - new_limit) (fun i -> make_stack_row tbody (last_limit - i - 1)) in
+        let newcells = Array.init (last_limit - new_limit) (fun i -> make_stack_row tbody (last_limit - i)) in
         Dom.insertBefore x64emu_stack_table tbody !last_tbody; last_tbody := Js.some tbody;
         all_rows := Array.concat [!all_rows; newcells]
       end
@@ -232,6 +232,7 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     let idx = Machine.last_stack_address machine - a in
     if idx >= 0 && idx < Array.length !all_rows then
       begin
+        Html.window##alert (Js.string ("row number: " ^ string_of_int idx));
         update_row !all_rows.(idx)
       end
     else
