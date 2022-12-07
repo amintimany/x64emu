@@ -232,7 +232,6 @@ let make_stack_display_for_machine doc display_limit machine x64emu_stack_table 
     let idx = Machine.last_stack_address machine - a in
     if idx >= 0 && idx < Array.length !all_rows then
       begin
-        Html.window##alert (Js.string ("row number: " ^ string_of_int idx));
         update_row !all_rows.(idx)
       end
     else
